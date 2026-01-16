@@ -27,7 +27,7 @@ def check_ollama_running():
         print(f"✗ Fehler beim Verbinden mit Ollama: {e}")
         return False, []
 
-def test_ollama_prompt(model="llama3.2", prompt="Wo steht der schiefe turm von Pisa? Antworte nur in einem Wort."):
+def test_ollama_prompt(model="phi3:mini", prompt="Beantworte die folgende Frage NUR mit einem einzigen Wort (1 Wort), ohne Zusatz, ohne Satzzeichen, ohne Erklärung: Frage: Wo steht der schiefe Turm von Pisa?!"):
     """
     Testet Ollama mit einem einfachen Prompt.
     """
@@ -85,11 +85,20 @@ def main():
     
     if not models:
         print("\n❌ Keine Modelle verfügbar. Bitte installieren Sie ein Modell:")
-        print("   Beispiel: ollama pull llama3.2")
+        print("   Beispiel: ollama pull phi3:mini")
         sys.exit(1)
     
-    # Verwende das erste verfügbare Modell
-    model_name = models[0]['name']
+    # Prüfe ob phi3:mini verfügbar ist
+    model_name = "phi3:mini"
+    available_model_names = [m['name'] for m in models]
+    
+    if model_name not in available_model_names:
+        print(f"\n⚠ Bevorzugtes Modell '{model_name}' nicht gefunden")
+        print(f"   Verfügbare Modelle: {', '.join(available_model_names)}")
+        print(f"   Verwende stattdessen: {available_model_names[0]}")
+        print(f"\n   Zum Installieren von phi3:mini:")
+        print(f"   ollama pull phi3:mini\n")
+        model_name = available_model_names[0]
     
     # Test-Prompt
     success = test_ollama_prompt(
