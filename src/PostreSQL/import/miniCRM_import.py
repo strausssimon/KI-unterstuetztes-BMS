@@ -25,7 +25,7 @@ DB_CONFIG = {
 }
 
 # Pfade
-MAPPING_FILE = r"src\db communication\import\mapping_minicrm_postresql.xlsx"
+MAPPING_FILE = r"src\PostreSQL\import\mapping_minicrm_postresql.xlsx"
 CANDIDATES_FILE = r"data\db\miniCRM\candidates_examples.xlsx"
 
 # --------------------------------------------------
@@ -91,16 +91,26 @@ def transform_data(minicrm_df, mapping):
         for pg_col, minicrm_col in mapping.items():
             value = row.get(minicrm_col)
             
-            # None/NaN beibehalten
-            if pd.isna(value):
-                pg_row[pg_col] = None
+            # Spezialbehandlung für anlage_wann: Auch bei NaN transform_field aufrufen
+            if pg_col.lower() == 'anlage wann' or 'anlage_wann' in pg_col.lower():
+                if pd.isna(value) or (isinstance(value, str) and value.strip() == ''):
+                    pg_row[pg_col] = datetime.now()
+                else:
+                    # Strings trimmen
+                    if isinstance(value, str):
+                        value = value.strip()
+                    pg_row[pg_col] = transform_field(pg_col, value)
             else:
-                # Strings trimmen
-                if isinstance(value, str):
-                    value = value.strip()
-                
-                # Spezielle Transformationen
-                pg_row[pg_col] = transform_field(pg_col, value)
+                # None/NaN beibehalten für andere Felder
+                if pd.isna(value):
+                    pg_row[pg_col] = None
+                else:
+                    # Strings trimmen
+                    if isinstance(value, str):
+                        value = value.strip()
+                    
+                    # Spezielle Transformationen
+                    pg_row[pg_col] = transform_field(pg_col, value)
         
         # miniCRM-ID immer aus "candidate: Id" übernehmen
         if 'candidate: Id' in row:
@@ -121,11 +131,16 @@ def transform_field(field_name, value):
     """
     Spezielle Transformationen für bestimmte Felder.
     """
-    if value is None or (isinstance(value, str) and value == ''):
-        return None
-    
-    # Datetime Felder
+    # Datetime Felder - Spezialbehandlung für anlage_wann
     if 'date' in field_name.lower() or field_name.lower() == 'anlage wann':
+        # Wenn leer, verwende aktuelles Datum für anlage_wann
+        if (value is None or (isinstance(value, str) and value.strip() == '')) and field_name.lower() == 'anlage wann':
+            return datetime.now()
+        
+        # Behandle leere Strings als None für andere Datumsfelder
+        if value is None or (isinstance(value, str) and value.strip() == ''):
+            return None
+        
         if isinstance(value, pd.Timestamp):
             return value
         elif isinstance(value, str):
@@ -133,6 +148,12 @@ def transform_field(field_name, value):
                 return pd.to_datetime(value)
             except:
                 return None
+        # Wenn es weder Timestamp noch String ist, aber auch nicht None -> None
+        return None
+    
+    # Behandle leere Strings explizit als None für andere Felder
+    if value is None or (isinstance(value, str) and value.strip() == ''):
+        return None
     
     # Integer Felder
     if field_name.lower() in ['regionale verfügbarkeit', 'id']:

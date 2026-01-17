@@ -68,6 +68,28 @@ KARRIERE_PFADE = {
 }
 
 # --------------------------------------------------
+# LÄNDER (Name -> Abkürzungen)
+# --------------------------------------------------
+LAENDER = {
+    "deutschland": ["deutschland", "de", "ger", "germany"],
+    "schweiz": ["schweiz", "ch", "switzerland"],
+    "österreich": ["österreich", "oesterreich", "at", "austria"],
+    "frankreich": ["frankreich", "fr", "france"],
+    "belgien": ["belgien", "be", "belgium"],
+    "niederlande": ["niederlande", "nl", "netherlands", "holland"],
+    "luxemburg": ["luxemburg", "lu", "luxembourg"],
+    "dänemark": ["dänemark", "daenemark", "dk", "denmark"],
+    "polen": ["polen", "pl", "poland"],
+    "tschechien": ["tschechien", "cz", "czech", "tschechische republik"]
+}
+
+# Erstelle Reverse-Mapping für schnelle Suche
+LAND_LOOKUP = {}
+for land, varianten in LAENDER.items():
+    for variante in varianten:
+        LAND_LOOKUP[variante.lower()] = land
+
+# --------------------------------------------------
 # HILFSFUNKTIONEN
 # --------------------------------------------------
 def similarity(a, b):
@@ -132,10 +154,18 @@ def extract_intent(question):
     question_lower = question.lower()
     ort_match = None
     state_match = None
+    land_match = None
 
     # Sortiere nach Länge (längste zuerst), damit "hamburg" vor "burg" gefunden wird
     staedte_sortiert = sorted(STADTEN, key=len, reverse=True)
     states_sortiert = sorted(STATES, key=len, reverse=True)
+
+    # Suche nach Ländern (prüfe alle Varianten)
+    for variante, land in LAND_LOOKUP.items():
+        pattern = r'\b' + re.escape(variante) + r'\b'
+        if re.search(pattern, question_lower):
+            land_match = land
+            break
 
     # Suche mit Word Boundaries (ganze Wörter)
     for stadt in staedte_sortiert:
@@ -178,6 +208,13 @@ def extract_intent(question):
     else:
         print("Stadt: nicht angegeben")
         print("Bundesland: nicht angegeben")
+
+    # Land
+    if land_match:
+        intent["land"] = land_match
+        print(f"Land: {land_match}")
+    else:
+        print("Land: nicht angegeben")
 
     return intent
 
@@ -256,7 +293,7 @@ def load_candidates():
     for r in rows:
         k = dict(zip(cols, r))
         # Konvertiere zu Kleinbuchstaben für Vergleiche
-        for field in ["position_now", "department", "wohnort", "wunscharbeitsort", "status"]:
+        for field in ["position_now", "department", "wohnort", "wunscharbeitsort"]:
             if k.get(field) and isinstance(k.get(field), str):
                 k[field] = k[field].lower()
         kandidaten_liste.append(k)
@@ -273,23 +310,26 @@ def match_candidates(intent, kandidaten_liste):
     Verwendet candidates-Tabellen-Spaltennamen.
     """
     ziel_lat, ziel_lon = None, None
-    if "ort" in intent and intent["ort"]:
-        try:
-            ziel_lat, ziel_lon, _ = get_coords_and_state(intent["ort"])
-        except ValueError:
-            print(f"Warnung: Ort '{intent['ort']}' nicht gefunden. Entfernung wird ignoriert.")
 
+    # Basis-Filter aus Intent
     ziel_position = intent.get("position")
     ziel_fach = intent.get("fachbereich")
     ziel_state = intent.get("state")
+    ziel_land = intent.get("land")
+
+    # Wenn eine Stadt im Intent steht, nutze deren Bundesland als Standard-
+    # Gebiet ("größtes Gebiet" = Bundesland der Zielstadt).
+    if "ort" in intent and intent["ort"]:
+        try:
+            ziel_lat, ziel_lon, ziel_state_from_ort = get_coords_and_state(intent["ort"])
+            if not ziel_state:
+                ziel_state = ziel_state_from_ort
+        except ValueError:
+            print(f"Warnung: Ort '{intent['ort']}' nicht gefunden. Entfernung wird ignoriert.")
 
     passende = []
 
     for k in kandidaten_liste:
-        # Status-Check (candidates hat 'status' Spalte)
-        if k.get("status") and k["status"].lower() == "nicht auf der suche":
-            continue
-        
         # Fachbereich-Check (candidates hat 'department' statt 'fachbereich')
         if ziel_fach and k.get("department") != ziel_fach:
             continue
@@ -301,21 +341,24 @@ def match_candidates(intent, kandidaten_liste):
             if ziel_position not in erlaubte:
                 continue
 
-        # Wohnort aus CSV
+        # Wohnort aus CSV (ggf. mit Komma, z.B. "mannheim, baden-württemberg")
         wohnort = k.get("wohnort", "")
         if wohnort:
+            # Nur die Stadt vor dem ersten Komma für die Koordinaten verwenden
+            wohnort_stadt = wohnort.split(",")[0].strip()
             try:
-                wohn_lat, wohn_lon, wohn_state = get_coords_and_state(wohnort)
+                wohn_lat, wohn_lon, wohn_state = get_coords_and_state(wohnort_stadt)
             except ValueError:
                 wohn_lat = wohn_lon = wohn_state = None
         else:
             wohn_lat = wohn_lon = wohn_state = None
 
-        # Wunscharbeitsort aus CSV
+        # Wunscharbeitsort aus CSV (ggf. mit Komma, z.B. "köln, nordrhein-westfalen, ohne")
         wunsch = k.get("wunscharbeitsort", "")
         if wunsch:
+            wunsch_stadt = wunsch.split(",")[0].strip()
             try:
-                w_lat, w_lon, w_state = get_coords_and_state(wunsch)
+                w_lat, w_lon, w_state = get_coords_and_state(wunsch_stadt)
             except ValueError:
                 w_lat = w_lon = w_state = None
         else:
@@ -326,13 +369,36 @@ def match_candidates(intent, kandidaten_liste):
             if wohn_state != ziel_state and w_state != ziel_state:
                 continue
 
-        # Entfernung prüfen (nutze 'regionale_verfuegbarkeit' statt 'fahrbereitschaft')
+        # Land-Prüfung: Wenn Land gesucht wird, prüfe ob im Wunscharbeitsort
+        # ein Länder-Token vorkommt (z.B. "schweiz", "ch", "switzerland").
+        if ziel_land:
+            tokens = tokenize(wunsch) if wunsch else []
+            kandidat_land = None
+            for tok in tokens:
+                land = LAND_LOOKUP.get(tok)
+                if land:
+                    kandidat_land = land
+                    break
+            # Wenn ein Land gesucht wird, aber im Wunscharbeitsort kein passendes
+            # Land erkannt wurde, Kandidat überspringen.
+            if kandidat_land != ziel_land:
+                continue
+
+        # Entfernung prüfen (nutze 'regionale_verfuegbarkeit' wie in intelligente_Suchabfrage.py)
         if ziel_lat is not None and ziel_lon is not None:
             max_km = k.get("regionale_verfuegbarkeit") or 50
+
+            # Entfernungen zu Wohn- und Wunscharbeitsort berechnen
             dist_wohn = haversine(ziel_lat, ziel_lon, wohn_lat, wohn_lon) if wohn_lat else float("inf")
             dist_wunsch = haversine(ziel_lat, ziel_lon, w_lat, w_lon) if w_lat else float("inf")
+
+            # Wie im Basisskript: Minimum der beiden Distanzen verwenden
             min_dist = min(dist_wohn, dist_wunsch)
-            if min_dist > max_km:
+            if min_dist == float("inf"):
+                min_dist = None
+
+            # Filter nach maximaler Entfernung
+            if min_dist is not None and min_dist > max_km:
                 continue
         else:
             min_dist = None
@@ -371,13 +437,15 @@ if __name__ == "__main__":
     ergebnis = match_candidates(intent, kandidaten)
 
     print("\n" + "=" * 80)
-    print(f"Geeignete Kandidaten ({len(ergebnis)} gefunden)")
+    print(f"Geeignete Kandidaten ({len(ergebnis)} gefunden, Top 5 angezeigt)")
     print("=" * 80 + "\n")
     
     if not ergebnis:
         print("Keine passenden Kandidaten gefunden.")
     else:
-        for idx, k in enumerate(ergebnis, 1):
+        # Begrenze Ausgabe auf Top 5
+        top_kandidaten = ergebnis[:5]
+        for idx, k in enumerate(top_kandidaten, 1):
             print(f"{idx}. {k['name']}")
             print(f"   ID: {k['kandidat_id']}")
             print(f"   Position: {k['position']}")

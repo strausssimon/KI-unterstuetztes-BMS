@@ -23,6 +23,7 @@ conn = psycopg.connect(
     dbname="postgres",
     user="postgres",
     password="Start123"
+    
 )
 
 cur = conn.cursor()
