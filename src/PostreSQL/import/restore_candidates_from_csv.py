@@ -11,22 +11,20 @@ Funktionen:
 - Kann die Tabelle vor dem Import leeren (TRUNCATE)
 """
 
+import sys
 import os
-from datetime import datetime
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, project_root)
 
+from datetime import datetime
 import psycopg
 import pandas as pd
+from src.db_config import DB_CONFIG
 
 # --------------------------------------------------
 # KONFIGURATION
 # --------------------------------------------------
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "Start123",
-}
 
 BACKUP_DIR = r"data\\db\\backup_postresql"
 

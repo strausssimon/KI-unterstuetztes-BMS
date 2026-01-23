@@ -7,10 +7,16 @@ Struktur:
 - Ab Zeile 4: Filterwerte/Vordefinierte Werte
 """
 
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, project_root)
+
 import psycopg
 from psycopg import sql
 import pandas as pd
-import os
+from src.db_config import DB_CONFIG
 
 def read_candidates_schema(excel_path='data/db/candidates_master.xlsx'):
     """
@@ -222,14 +228,49 @@ def create_candidates_table(conn):
             
             # Bestehende Spalten holen
             existing_columns = get_existing_columns(cur)
+
+            # Gewünschte Spalten aufbauen (mit Spezialbehandlung für angelegt/anlage_wann → letzter_kontakt)
+            # Spalten zu ignorieren/filtern
+            columns_to_remove = {'adresse', 'strasse', 'hausnummer', 'plz'}
             
-            # Gewünschte Spalten aufbauen
             desired_columns = {}
             for col_name, data_type in zip(column_names, data_types):
                 if pd.notna(col_name) and col_name != 'Spaltenname':
-                    clean_name = sanitize_column_name(col_name)
+                    raw_clean_name = sanitize_column_name(col_name)
+                    
+                    # Überspringe zu entfernende Spalten
+                    if raw_clean_name in columns_to_remove:
+                        continue
+
+                    # Spezieller Mapping-Fall: alte Spalte "angelegt_wann"/"anlage_wann" wird zukünftig
+                    # als "letzter_kontakt" geführt.
+                    if raw_clean_name in ["angelegt_wann", "anlage_wann"]:
+                        clean_name = "letzter_kontakt"
+                    else:
+                        clean_name = raw_clean_name
+
                     pg_type = map_excel_type_to_postgres(data_type)
                     desired_columns[clean_name] = pg_type
+            
+            # Stelle sicher, dass "gehaltswunsch" immer als INTEGER definiert ist
+            desired_columns["gehaltswunsch"] = "INTEGER"
+
+            # Falls die alte Spalte noch existiert, in der DB umbenennen, damit Daten erhalten bleiben
+            renamed = False
+            if "angelegt_wann" in existing_columns and "letzter_kontakt" in desired_columns:
+                print("   Benenne Spalte 'angelegt_wann' in 'letzter_kontakt' um...")
+                cur.execute("ALTER TABLE candidates RENAME COLUMN angelegt_wann TO letzter_kontakt;")
+                conn.commit()
+                renamed = True
+            elif "anlage_wann" in existing_columns and "letzter_kontakt" in desired_columns:
+                print("   Benenne Spalte 'anlage_wann' in 'letzter_kontakt' um...")
+                cur.execute("ALTER TABLE candidates RENAME COLUMN anlage_wann TO letzter_kontakt;")
+                conn.commit()
+                renamed = True
+
+            if renamed:
+                # Nach dem Umbenennen Spalteninformationen neu laden
+                existing_columns = get_existing_columns(cur)
             
             # Schemas vergleichen
             neue_spalten, wegfallende_spalten, geaenderte_typen = compare_schemas(
@@ -282,10 +323,24 @@ def create_candidates_table(conn):
         # Neue Tabelle erstellen
         print("   Erstelle CREATE TABLE Statement...")
         
+        # Spalten zu ignorieren/filtern
+        columns_to_remove = {'adresse', 'strasse', 'hausnummer', 'plz'}
+        
         create_columns = []
         for i, (col_name, data_type) in enumerate(zip(column_names, data_types)):
             if pd.notna(col_name) and col_name != 'Spaltenname':
-                clean_col_name = sanitize_column_name(col_name)
+                raw_clean_col_name = sanitize_column_name(col_name)
+                
+                # Überspringe zu entfernende Spalten
+                if raw_clean_col_name in columns_to_remove:
+                    print(f"   ⊘ Ignoriere Spalte: {col_name} (wird entfernt)")
+                    continue
+
+                # Mapping: angelegt/anlage_wann → letzter_kontakt
+                if raw_clean_col_name in ["angelegt_wann", "anlage_wann"]:
+                    clean_col_name = "letzter_kontakt"
+                else:
+                    clean_col_name = raw_clean_col_name
                 pg_type = map_excel_type_to_postgres(data_type)
                 
                 # ID als Primary Key
@@ -296,6 +351,42 @@ def create_candidates_table(conn):
                     create_columns.append(f'    {clean_col_name} {pg_type} UNIQUE')
                 else:
                     create_columns.append(f'    {clean_col_name} {pg_type}')
+
+        # Helper-Funktion zum Extrahieren des Spaltennamens
+        def _extract_col_name(col_def: str) -> str:
+            return col_def.strip().split()[0] if col_def.strip() else ""
+
+        # Spaltenreordering und Einfügen neuer Spalten
+        names = [_extract_col_name(c) for c in create_columns]
+        
+        # 1. "letzter_kontakt" zwischen "status_expired_set" und "current_status_interview" einsortieren
+        if "letzter_kontakt" in names and "status_expired_set" in names and "current_status_interview" in names:
+            lk_idx = names.index("letzter_kontakt")
+            se_idx = names.index("status_expired_set")
+            csi_idx = names.index("current_status_interview")
+            
+            # Wenn nicht schon zwischen den beiden, verschieben
+            if lk_idx != se_idx + 1 or csi_idx != se_idx + 2:
+                lk_def = create_columns.pop(lk_idx)
+                names = [_extract_col_name(c) for c in create_columns]
+                se_idx = names.index("status_expired_set")
+                create_columns.insert(se_idx + 1, lk_def)
+        
+        # 2. "gehaltswunsch" zwischen "department" und "short_note" einfügen (falls noch nicht vorhanden)
+        names = [_extract_col_name(c) for c in create_columns]
+        if "gehaltswunsch" not in names and "department" in names and "short_note" in names:
+            dept_idx = names.index("department")
+            create_columns.insert(dept_idx + 1, "    gehaltswunsch INTEGER")
+            print("   + Füge neue Spalte hinzu: gehaltswunsch (INTEGER)")
+        elif "gehaltswunsch" in names and "department" in names and "short_note" in names:
+            # Falls "gehaltswunsch" existiert, richtig positionieren
+            gw_idx = names.index("gehaltswunsch")
+            dept_idx = names.index("department")
+            if gw_idx != dept_idx + 1:
+                gw_def = create_columns.pop(gw_idx)
+                names = [_extract_col_name(c) for c in create_columns]
+                dept_idx = names.index("department")
+                create_columns.insert(dept_idx + 1, gw_def)
         
         create_statement = f"""
 CREATE TABLE candidates (
@@ -439,19 +530,10 @@ def main():
     print("Candidates-Tabelle erstellen")
     print("=" * 80)
     
-    # Verbindungsparameter
-    conn_params = {
-        'host': 'localhost',
-        'port': 5432,
-        'dbname': 'postgres',
-        'user': 'postgres',
-        'password': 'bigdataconsulting'
-    }
-    
     try:
         # Verbindung herstellen
         print("\n=== Datenbankverbindung ===\n")
-        with psycopg.connect(**conn_params, connect_timeout=10) as conn:
+        with psycopg.connect(**DB_CONFIG, connect_timeout=10) as conn:
             print("✓ Verbindung zu PostgreSQL hergestellt")
             
             # Tabelle erstellen

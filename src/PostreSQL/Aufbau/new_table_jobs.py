@@ -7,10 +7,17 @@ Struktur:
 - Ab Zeile 4: Filterwerte/Vordefinierte Werte
 """
 
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, project_root)
+
 import psycopg
 from psycopg import sql
 import pandas as pd
-import os
+from src.db_config import DB_CONFIG
+
 
 def read_jobs_schema(excel_path='data/db/jobs_master.xlsx'):
     """
@@ -56,187 +63,212 @@ def read_jobs_schema(excel_path='data/db/jobs_master.xlsx'):
     return column_names, data_types, example_row, filter_values
 
 
-def create_jobs_table(conn):
+def get_existing_columns(cur):
     """
-    Erstellt die Jobs-Tabelle in PostgreSQL.
+    Holt die bestehenden Spalten der jobs-Tabelle.
+    
+    Returns:
+        dict: {column_name: data_type_string}
+    """
+    cur.execute("""
+        SELECT column_name, data_type, character_maximum_length
+        FROM information_schema.columns
+        WHERE table_name = 'jobs'
+        ORDER BY ordinal_position;
+    """)
+    
+    existing = {}
+    for col_name, data_type, max_length in cur.fetchall():
+        type_str = data_type.upper()
+        if max_length and 'CHARACTER' in type_str:
+            type_str = f"CHARACTER VARYING({max_length})"
+        existing[col_name] = type_str
+    
+    return existing
+
+
+def sanitize_column_name(col_name):
+    """
+    Bereinigt Spaltennamen für PostgreSQL.
+    """
+    clean_col_name = str(col_name).strip().lower()
+    clean_col_name = clean_col_name.replace(' ', '_').replace('/', '_').replace('-', '_')
+    clean_col_name = clean_col_name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue')
+    clean_col_name = clean_col_name.replace('ß', 'ss')
+    
+    while '__' in clean_col_name:
+        clean_col_name = clean_col_name.replace('__', '_')
+    
+    clean_col_name = clean_col_name.strip('_')
+    
+    return clean_col_name
+
+
+def map_excel_type_to_postgres(data_type):
+    """
+    Mappt Excel-Datentypen auf PostgreSQL-Typen.
+    """
+    if pd.isna(data_type):
+        return 'TEXT'
+    
+    data_type_str = str(data_type).upper()
+    
+    if 'CHARACTER VARYING' in data_type_str:
+        return data_type_str
+    elif data_type_str in ['INT', 'INTEGER']:
+        return 'INTEGER'
+    elif data_type_str == 'BOOLEAN':
+        return 'BOOLEAN'
+    elif data_type_str == 'DATE':
+        return 'DATE'
+    elif data_type_str == 'DATETIME':
+        return 'TIMESTAMP'
+    else:
+        return 'TEXT'
+
+
+def compare_schemas(existing_columns, desired_columns):
+    """
+    Vergleicht bestehende und gewünschte Spalten.
+    
+    Returns:
+        tuple: (neue_spalten, wegfallende_spalten, geaenderte_typen)
+    """
+    existing_names = set(existing_columns.keys())
+    desired_names = set(desired_columns.keys())
+    
+    neue_spalten = {}
+    for col in desired_names - existing_names:
+        neue_spalten[col] = desired_columns[col]
+    
+    wegfallende_spalten = list(existing_names - desired_names)
+    
+    geaenderte_typen = {}
+    for col in existing_names & desired_names:
+        if existing_columns[col] != desired_columns[col]:
+            geaenderte_typen[col] = {
+                'alt': existing_columns[col],
+                'neu': desired_columns[col]
+            }
+    
+    return neue_spalten, wegfallende_spalten, geaenderte_typen
+
+
+def alter_table_structure(conn, neue_spalten, wegfallende_spalten, geaenderte_typen):
+    """
+    Ändert die Tabellenstruktur basierend auf den Unterschieden.
+    """
+    with conn.cursor() as cur:
+        if neue_spalten:
+            print("\n=== Füge neue Spalten hinzu ===\n")
+            for col_name, col_type in neue_spalten.items():
+                print(f"   + {col_name} ({col_type})")
+                cur.execute(f"ALTER TABLE jobs ADD COLUMN {col_name} {col_type};")
+            conn.commit()
+            print(f"\n✓ {len(neue_spalten)} Spalte(n) hinzugefügt")
+        
+        if wegfallende_spalten:
+            print("\n=== Lösche wegfallende Spalten ===\n")
+            for col_name in wegfallende_spalten:
+                print(f"   - {col_name}")
+                cur.execute(f"ALTER TABLE jobs DROP COLUMN {col_name};")
+            conn.commit()
+            print(f"\n✓ {len(wegfallende_spalten)} Spalte(n) gelöscht")
+        
+        if geaenderte_typen:
+            print("\n=== Ändere Spaltentypen ===\n")
+            for col_name, types in geaenderte_typen.items():
+                print(f"   ≠ {col_name}: {types['alt']} → {types['neu']}")
+                try:
+                    cur.execute(f"ALTER TABLE jobs ALTER COLUMN {col_name} TYPE {types['neu']} USING {col_name}::{types['neu']};")
+                except Exception as e:
+                    print(f"      ⚠ Warnung: Typ konnte nicht geändert werden: {e}")
+            conn.commit()
+            print(f"\n✓ Typen angepasst")
+
+
+def create_jobs_table(conn, column_names, data_types):
+    """
+    Erstellt die Jobs-Tabelle mit allen Spalten aus dem Excel-Schema.
     """
     print("\n=== Erstelle Jobs-Tabelle ===\n")
     
-    # Lese Schema
-    column_names, data_types, example_row, filter_values = read_jobs_schema()
+    # Erstelle Dictionary mit bereinigten Spaltennamen und Typen
+    desired_columns = {}
+    
+    for col_name, col_type in zip(column_names, data_types):
+        if pd.notna(col_name) and col_name != 'Spaltenname':
+            clean_col = sanitize_column_name(col_name)
+            pg_type = map_excel_type_to_postgres(col_type)
+            
+            # ID-Spalte bekommt Identity
+            if clean_col == 'id':
+                desired_columns[clean_col] = 'INTEGER GENERATED BY DEFAULT AS IDENTITY (START WITH 1000) PRIMARY KEY'
+            else:
+                desired_columns[clean_col] = pg_type
+            
+            print(f"   {clean_col}: {desired_columns[clean_col]}")
     
     with conn.cursor() as cur:
-        # Prüfe ob Tabelle bereits existiert
+        # Prüfe ob Tabelle existiert
         cur.execute("""
             SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables 
+                SELECT FROM information_schema.tables 
                 WHERE table_name = 'jobs'
             );
         """)
-        
         table_exists = cur.fetchone()[0]
         
         if table_exists:
-            print("⚠ Tabelle 'jobs' existiert bereits!")
-            antwort = input("Möchten Sie die Tabelle löschen und neu erstellen? (j/n): ").strip().lower()
-            if antwort in ['j', 'ja', 'y', 'yes']:
-                print("   Lösche alte Tabelle...")
-                cur.execute("DROP TABLE jobs CASCADE;")
+            print("\n⚠ Tabelle 'jobs' existiert bereits!")
+            response = input("Möchten Sie die Tabelle [d]ropen und neu erstellen oder [a]npassen? (d/a): ").lower()
+            
+            if response == 'd':
+                print("\n=== Lösche bestehende Tabelle ===")
+                cur.execute("DROP TABLE IF EXISTS jobs CASCADE;")
                 conn.commit()
-                print("✓ Tabelle gelöscht")
+                table_exists = False
+            elif response == 'a':
+                # Anpassungsmodus
+                existing_columns = get_existing_columns(cur)
+                neue_spalten, wegfallende_spalten, geaenderte_typen = compare_schemas(existing_columns, desired_columns)
+                
+                if neue_spalten or wegfallende_spalten or geaenderte_typen:
+                    alter_table_structure(conn, neue_spalten, wegfallende_spalten, geaenderte_typen)
+                else:
+                    print("\n✓ Tabellenstruktur ist bereits aktuell")
+                
+                return  # Fertig mit Anpassung
             else:
-                print("✓ Abgebrochen. Tabelle bleibt erhalten.")
+                print("Abbruch.")
                 return
         
-        # Baue CREATE TABLE Statement
-        print("   Erstelle CREATE TABLE Statement...")
-        
-        create_columns = []
-        for i, (col_name, data_type) in enumerate(zip(column_names, data_types)):
-            if pd.notna(col_name) and col_name != 'Spaltenname':
-                # Bereinige Spaltennamen (entferne Leerzeichen, Sonderzeichen)
-                clean_col_name = str(col_name).strip().lower()
-                clean_col_name = clean_col_name.replace(' ', '_').replace('/', '_').replace('-', '_')
-                clean_col_name = clean_col_name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue')
-                clean_col_name = clean_col_name.replace('ß', 'ss')
-                
-                # Mappe Excel-Datentypen auf PostgreSQL
-                if pd.isna(data_type):
-                    pg_type = 'TEXT'
-                elif 'character varying' in str(data_type):
-                    pg_type = str(data_type)
-                elif data_type == 'int':
-                    pg_type = 'INTEGER'
-                elif data_type == 'boolean':
-                    pg_type = 'BOOLEAN'
-                elif data_type == 'date':
-                    pg_type = 'DATE'
-                elif data_type == 'datetime':
-                    pg_type = 'TIMESTAMP'
-                else:
-                    pg_type = 'TEXT'
-                
-                # ID als Primary Key
-                if col_name == 'ID':
-                    create_columns.append(f'    {clean_col_name} {pg_type} PRIMARY KEY')
-                else:
-                    create_columns.append(f'    {clean_col_name} {pg_type}')
-        
-        create_statement = f"""
-CREATE TABLE jobs (
-{',\n'.join(create_columns)}
-);
-        """
-        
-        print("\n--- CREATE TABLE Statement ---")
-        print(create_statement)
-        print("--- Ende Statement ---\n")
-        
-        # Führe CREATE TABLE aus
-        cur.execute(create_statement)
-        conn.commit()
-        
-        print("✓ Tabelle 'jobs' erstellt")
-        
-        # Zeige Filterwerte an
-        if filter_values:
-            print("\n=== Vordefinierte Filterwerte ===\n")
-            for col_name, values in filter_values.items():
-                print(f"{col_name}:")
-                for val in values[:5]:  # Zeige max 5 Werte
-                    print(f"  - {val}")
-                if len(values) > 5:
-                    print(f"  ... und {len(values) - 5} weitere")
-                print()
-
-
-def insert_example_job(conn):
-    """
-    Fügt den Beispiel-Job aus der Excel-Datei ein.
-    """
-    print("\n=== Füge Beispiel-Job ein ===\n")
-    
-    # Lese Schema
-    column_names, data_types, example_row, _ = read_jobs_schema()
-    
-    with conn.cursor() as cur:
-        # Prüfe ob bereits Jobs vorhanden sind
-        cur.execute("SELECT COUNT(*) FROM jobs;")
-        existing_count = cur.fetchone()[0]
-        
-        if existing_count > 0:
-            print(f"⚠ Es sind bereits {existing_count} Jobs in der Datenbank")
-            antwort = input("Möchten Sie trotzdem den Beispiel-Job hinzufügen? (j/n): ").strip().lower()
-            if antwort not in ['j', 'ja', 'y', 'yes']:
-                print("✓ Abgebrochen.")
-                return
-        
-        # Bereite INSERT vor
-        clean_columns = []
-        values = []
-        
-        for col_name, value, data_type in zip(column_names, example_row, data_types):
-            if pd.notna(col_name) and col_name != 'Spaltenname':
-                clean_col_name = str(col_name).strip().lower()
-                clean_col_name = clean_col_name.replace(' ', '_').replace('/', '_').replace('-', '_')
-                clean_col_name = clean_col_name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue')
-                clean_col_name = clean_col_name.replace('ß', 'ss')
-                clean_columns.append(clean_col_name)
-                
-                # Konvertiere Werte
-                if pd.isna(value) or str(value) == 'NaN':
-                    values.append(None)
-                elif data_type == 'int':
-                    try:
-                        values.append(int(value))
-                    except:
-                        values.append(None)
-                elif data_type == 'boolean':
-                    values.append(str(value).lower() in ['true', 'ja', 'yes', '1'])
-                else:
-                    values.append(str(value))
-        
-        # Baue INSERT Statement
-        placeholders = ', '.join(['%s'] * len(values))
-        columns_str = ', '.join(clean_columns)
-        
-        insert_sql = f"""
-            INSERT INTO jobs ({columns_str})
-            VALUES ({placeholders})
-            RETURNING id;
-        """
-        
-        try:
-            cur.execute(insert_sql, values)
-            job_id = cur.fetchone()[0]
+        if not table_exists:
+            # Erstelle neue Tabelle
+            columns_sql = []
+            for col_name, col_type in desired_columns.items():
+                columns_sql.append(f"{col_name} {col_type}")
+            
+            create_sql = f"CREATE TABLE jobs ({', '.join(columns_sql)});"
+            
+            print("\n=== SQL für neue Tabelle ===")
+            print(create_sql)
+            print()
+            
+            cur.execute(create_sql)
             conn.commit()
             
-            print(f"✓ Beispiel-Job eingefügt: ID = {job_id}")
-            
-            # Zeige eingefügte Daten
-            print("\n=== Eingefügter Job ===\n")
-            cur.execute("SELECT * FROM jobs WHERE id = %s;", (job_id,))
-            row = cur.fetchone()
-            col_names = [desc[0] for desc in cur.description]
-            
-            for col, val in zip(col_names, row):
-                if val is not None:
-                    print(f"{col:25s}: {val}")
-            
-        except Exception as e:
-            conn.rollback()
-            print(f"✗ Fehler beim Einfügen: {e}")
-            raise
+            print("✓ Tabelle 'jobs' erfolgreich erstellt!")
+
+
 
 
 def show_table_info(conn):
     """
     Zeigt Informationen über die Jobs-Tabelle.
     """
-    print("\n=== Tabellen-Information ===\n")
-    
     with conn.cursor() as cur:
-        # Spalten-Info
+        # Spalteninfo
         cur.execute("""
             SELECT column_name, data_type, character_maximum_length
             FROM information_schema.columns
@@ -244,63 +276,45 @@ def show_table_info(conn):
             ORDER BY ordinal_position;
         """)
         
-        print("Spalten:")
+        print("\n=== Tabellenstruktur 'jobs' ===\n")
         for col_name, data_type, max_length in cur.fetchall():
-            type_str = f"{data_type}"
+            type_info = data_type
             if max_length:
-                type_str += f"({max_length})"
-            print(f"  - {col_name:30s} {type_str}")
+                type_info += f"({max_length})"
+            print(f"   {col_name}: {type_info}")
         
-        # Anzahl Einträge
+        # Anzahl Zeilen
         cur.execute("SELECT COUNT(*) FROM jobs;")
         count = cur.fetchone()[0]
-        print(f"\n✓ Anzahl Jobs: {count}")
+        print(f"\n✓ Anzahl Datensätze: {count}")
 
 
 def main():
-    """Hauptfunktion"""
-    print("=" * 80)
-    print("Jobs-Tabelle erstellen")
-    print("=" * 80)
+    """
+    Hauptfunktion zum Erstellen/Anpassen der Jobs-Tabelle.
+    """
+    print("=" * 60)
+    print(" Jobs-Tabelle Setup")
+    print("=" * 60)
     
-    # Verbindungsparameter
-    conn_params = {
-        'host': 'localhost',
-        'port': 5432,
-        'dbname': 'postgres',
-        'user': 'postgres',
-        'password': 'bigdataconsulting'
-    }
+    # Lese Schema aus Excel
+    column_names, data_types, example_row, filter_values = read_jobs_schema()
+    
+    # Verbinde mit Datenbank
+    print("\n=== Verbinde mit Datenbank ===\n")
+    conn = psycopg.connect(**DB_CONFIG)
+    print("✓ Verbunden")
     
     try:
-        # Verbindung herstellen
-        print("\n=== Datenbankverbindung ===\n")
-        with psycopg.connect(**conn_params, connect_timeout=10) as conn:
-            print("✓ Verbindung zu PostgreSQL hergestellt")
-            
-            # Tabelle erstellen
-            create_jobs_table(conn)
-            
-            # Beispiel-Job einfügen
-            antwort = input("\nMöchten Sie den Beispiel-Job einfügen? (j/n): ").strip().lower()
-            if antwort in ['j', 'ja', 'y', 'yes']:
-                insert_example_job(conn)
-            
-            # Tabellen-Info anzeigen
-            show_table_info(conn)
-            
-            print("\n" + "=" * 80)
-            print("✓ Erfolgreich abgeschlossen!")
-            print("=" * 80)
-            
-    except psycopg.Error as e:
-        print(f"\n✗ Datenbankfehler: {e}")
-        print("\nStellen Sie sicher, dass:")
-        print("  1. Docker läuft (docker-start.bat)")
-        print("  2. PostgreSQL Container aktiv ist")
-    except Exception as e:
-        print(f"\n✗ Fehler: {e}")
-        raise
+        # Erstelle/Aktualisiere Tabelle
+        create_jobs_table(conn, column_names, data_types)
+        
+        # Zeige Tabelleninfo
+        show_table_info(conn)
+        
+    finally:
+        conn.close()
+        print("\n✓ Verbindung geschlossen")
 
 
 if __name__ == "__main__":

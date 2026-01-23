@@ -7,22 +7,20 @@ Importiert Kandidaten aus miniCRM Excel-Datei in die PostgreSQL candidates-Tabel
 Das Mapping zwischen miniCRM und PostgreSQL Spalten ist in mapping_minicrm_postresql.xlsx definiert.
 """
 
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, project_root)
+
 import pandas as pd
 import psycopg
 from datetime import datetime
-import sys
-import os
+from src.db_config import DB_CONFIG
 
 # --------------------------------------------------
 # KONFIGURATION
 # --------------------------------------------------
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "bigdataconsulting"
-}
 
 # Pfade
 MAPPING_FILE = r"src\PostreSQL\import\mapping_minicrm_postresql.xlsx"
@@ -91,8 +89,12 @@ def transform_data(minicrm_df, mapping):
         for pg_col, minicrm_col in mapping.items():
             value = row.get(minicrm_col)
             
-            # Spezialbehandlung für anlage_wann: Auch bei NaN transform_field aufrufen
-            if pg_col.lower() == 'anlage wann' or 'anlage_wann' in pg_col.lower():
+            # Spezialbehandlung für Datumsfeld "Anlage wann" / "Letzter Kontakt": Auch bei NaN transform_field aufrufen
+            if (
+                pg_col.lower() in ['anlage wann', 'letzter kontakt']
+                or 'anlage_wann' in pg_col.lower()
+                or 'letzter_kontakt' in pg_col.lower()
+            ):
                 if pd.isna(value) or (isinstance(value, str) and value.strip() == ''):
                     pg_row[pg_col] = datetime.now()
                 else:
@@ -131,10 +133,10 @@ def transform_field(field_name, value):
     """
     Spezielle Transformationen für bestimmte Felder.
     """
-    # Datetime Felder - Spezialbehandlung für anlage_wann
-    if 'date' in field_name.lower() or field_name.lower() == 'anlage wann':
-        # Wenn leer, verwende aktuelles Datum für anlage_wann
-        if (value is None or (isinstance(value, str) and value.strip() == '')) and field_name.lower() == 'anlage wann':
+    # Datetime Felder - Spezialbehandlung für anlage_wann / letzter kontakt
+    if 'date' in field_name.lower() or field_name.lower() in ['anlage wann', 'letzter kontakt']:
+        # Wenn leer, verwende aktuelles Datum für anlage_wann/letzter kontakt
+        if (value is None or (isinstance(value, str) and value.strip() == '')) and field_name.lower() in ['anlage wann', 'letzter kontakt']:
             return datetime.now()
         
         # Behandle leere Strings als None für andere Datumsfelder

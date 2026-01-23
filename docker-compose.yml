@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: bigdataconsulting
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./init-scripts:/docker-entrypoint-initdb.d

@@ -1,3 +1,9 @@
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
 import psycopg
 import requests
 import json
@@ -5,17 +11,11 @@ import pandas as pd
 import math
 import re
 from difflib import SequenceMatcher
+from src.db_config import DB_CONFIG
 
 # --------------------------------------------------
 # KONFIGURATION
 # --------------------------------------------------
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "Start123"
-}
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "phi3:mini"
@@ -209,6 +209,13 @@ def load_candidates():
     """)
     
     columns_info = cur.fetchall()
+    if not columns_info:
+        print("Fehler: Tabelle 'candidates' existiert nicht.")
+        print("Bitte zuerst das Setup-Skript 'new_table_candidates.py' unter 'src/PostreSQL/Aufbau' ausführen.")
+        cur.close()
+        conn.close()
+        return []
+
     timestamp_columns = [col for col, dtype in columns_info if 'timestamp' in dtype.lower() or 'date' in dtype.lower()]
     
     # Baue SELECT mit CAST für Timestamp-Spalten
@@ -240,7 +247,7 @@ def load_candidates():
             # Fallback: Lade alle Spalten außer problematischen Timestamps
             cur.execute(f"""
                 SELECT * FROM candidates 
-                WHERE EXTRACT(YEAR FROM COALESCE(anlage_wann, CURRENT_TIMESTAMP)) < 10000
+                WHERE EXTRACT(YEAR FROM COALESCE(letzter_kontakt, CURRENT_TIMESTAMP)) < 10000
             """)
             rows = cur.fetchall()
             cols = [d[0] for d in cur.description]

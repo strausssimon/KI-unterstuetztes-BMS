@@ -1,21 +1,27 @@
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
 import psycopg
 import requests
 import json
 import pandas as pd
 import math
 import re
+from datetime import datetime
 from difflib import SequenceMatcher
+from src.db_config import DB_CONFIG
 
 # --------------------------------------------------
 # KONFIGURATION
 # --------------------------------------------------
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "Start123"
-}
+
+RESULTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "results"
+)
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "phi3:mini"
@@ -114,6 +120,16 @@ def best_fuzzy_match(terms, candidates):
                 best_score = score
                 best_candidate = candidate
     return best_candidate, best_score
+
+
+def slugify(value):
+    value = value.lower().strip()
+    replacements = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}
+    for src, tgt in replacements.items():
+        value = value.replace(src, tgt)
+    value = re.sub(r"[^a-z0-9]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    return value
 
 # --------------------------------------------------
 # STÄDTE + STATES LADEN
@@ -246,6 +262,13 @@ def load_candidates():
     """)
     
     columns_info = cur.fetchall()
+    if not columns_info:
+        print("Fehler: Tabelle 'candidates' existiert nicht.")
+        print("Bitte zuerst das Setup-Skript 'new_table_candidates.py' unter 'src/PostreSQL/Aufbau' ausführen.")
+        cur.close()
+        conn.close()
+        return []
+
     timestamp_columns = [col for col, dtype in columns_info if 'timestamp' in dtype.lower() or 'date' in dtype.lower()]
     
     # Baue SELECT mit CAST für Timestamp-Spalten
@@ -277,7 +300,7 @@ def load_candidates():
             # Fallback: Lade alle Spalten außer problematischen Timestamps
             cur.execute(f"""
                 SELECT * FROM candidates 
-                WHERE EXTRACT(YEAR FROM COALESCE(anlage_wann, CURRENT_TIMESTAMP)) < 10000
+                WHERE EXTRACT(YEAR FROM COALESCE(letzter_kontakt, CURRENT_TIMESTAMP)) < 10000
             """)
             rows = cur.fetchall()
             cols = [d[0] for d in cur.description]
@@ -328,6 +351,7 @@ def match_candidates(intent, kandidaten_liste):
             print(f"Warnung: Ort '{intent['ort']}' nicht gefunden. Entfernung wird ignoriert.")
 
     passende = []
+    passende_roh = []
 
     for k in kandidaten_liste:
         # Fachbereich-Check (candidates hat 'department' statt 'fachbereich')
@@ -407,6 +431,7 @@ def match_candidates(intent, kandidaten_liste):
         wohn_info = f"{wohnort} / {wohn_state}" if wohn_state else wohnort
         wunsch_info = f"{wunsch} / {w_state}" if w_state else wunsch
 
+        passende_roh.append(k)
         passende.append({
             "kandidat_id": k["id"],
             "name": f"{k.get('first_name', '')} {k.get('last_name', '')}".strip(),
@@ -418,7 +443,34 @@ def match_candidates(intent, kandidaten_liste):
         })
 
     passende.sort(key=lambda x: x["entfernung_km"] if x["entfernung_km"] is not None else float('inf'))
-    return passende
+    return passende, passende_roh
+
+
+def export_to_excel(intent, kandidaten_roh):
+    if not kandidaten_roh:
+        print("\nKein Excel-Export, da keine passenden Kandidaten gefunden wurden.")
+        return
+
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    teile = ["export"]
+    for schluessel in ["position", "fachbereich", "ort", "state", "land"]:
+        wert = intent.get(schluessel)
+        if wert:
+            teile.append(slugify(str(wert)))
+
+    datum_str = datetime.now().strftime("%Y%m%d")
+    teile.append(datum_str)
+
+    dateiname = "_".join(teile) + ".xlsx"
+    pfad = os.path.join(RESULTS_DIR, dateiname)
+
+    try:
+        df = pd.DataFrame(kandidaten_roh)
+        df.to_excel(pfad, index=False)
+        print(f"\nExcel-Export erstellt: {pfad}")
+    except Exception as e:
+        print(f"Fehler beim Excel-Export: {e}")
 
 # --------------------------------------------------
 # MAIN
@@ -434,7 +486,7 @@ if __name__ == "__main__":
 
     intent = extract_intent(frage)
     kandidaten = load_candidates()
-    ergebnis = match_candidates(intent, kandidaten)
+    ergebnis, ergebnis_roh = match_candidates(intent, kandidaten)
 
     print("\n" + "=" * 80)
     print(f"Geeignete Kandidaten ({len(ergebnis)} gefunden, Top 5 angezeigt)")
@@ -455,3 +507,5 @@ if __name__ == "__main__":
             if k['entfernung_km'] is not None:
                 print(f"   Entfernung: {k['entfernung_km']} km")
             print()
+
+    export_to_excel(intent, ergebnis_roh)

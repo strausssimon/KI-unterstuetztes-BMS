@@ -8,18 +8,18 @@ Leitet den Wunscharbeitsort aus der available-Spalte ab:
 - Städtenamen aus CSV → Stadt1, Stadt2, ...
 """
 
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, project_root)
+
 import pandas as pd
 import psycopg
 import re
+from src.db_config import DB_CONFIG
 
 # Konfiguration
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "bigdataconsulting"
-}
 
 STAEDTE_CSV = r"data\Staedte_Deutschland.csv"
 

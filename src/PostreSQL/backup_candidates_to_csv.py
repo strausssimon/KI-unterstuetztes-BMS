@@ -3,21 +3,20 @@ Backup-Skript für die candidates-Tabelle
 Exportiert die Tabelle als CSV mit Zeitstempel im Dateinamen
 """
 
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
 import psycopg
 import pandas as pd
 from datetime import datetime
-import os
+from src.db_config import DB_CONFIG
 
 # --------------------------------------------------
 # KONFIGURATION
 # --------------------------------------------------
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "Start123"
-}
 
 BACKUP_DIR = r"data\db\backup_postresql"
 
