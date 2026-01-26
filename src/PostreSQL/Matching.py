@@ -1,20 +1,26 @@
+import sys
+import os
+# Füge Projekt-Root zum Python-Pfad hinzu
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
 import psycopg
 import pandas as pd
 import math
 import re
+from datetime import datetime
+from src.db_config import DB_CONFIG
 
 # --------------------------------------------------
 # KONFIGURATION
 # --------------------------------------------------
-DB_CONFIG = {
-    "host": "localhost",
-    "port": 5432,
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "Start123"
-}
 
-CSV_PATH = r"C:\Users\Angler1000\Desktop\Masterstudium\4. Semester\Big-Data-Consultingprojekt\Entfernungsbestimmung\Städte_Deutschland.csv"
+RESULTS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "results"
+)
+
+CSV_PATH = r"data\Staedte_Deutschland.csv"
 
 WEIGHT_SALARY = 0.7
 WEIGHT_DRIVE = 0.3
@@ -84,20 +90,31 @@ def load_job(job_id):
     conn = psycopg.connect(**DB_CONFIG)
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, position, fachbereich, ort, gehalt_von, gehalt_bis
+        SELECT id, position, department, ort, gehalt_von, gehalt_bis
         FROM jobs WHERE id = %s
     """, (job_id,))
     row = cur.fetchone()
+    
+    if not row:
+        cur.close()
+        conn.close()
+        raise ValueError(f"Job mit ID {job_id} nicht gefunden")
+    
     cur.close()
     conn.close()
 
     job = dict(zip(
-        ["id", "position", "fachbereich", "ort", "gehalt_von", "gehalt_bis"], row
+        ["id", "position", "department", "ort", "gehalt_von", "gehalt_bis"], row
     ))
+    
+    # Debug-Ausgabe der geladenen Rohdaten
+    print(f"\n[DEBUG] Geladene Job-Daten (roh):")
+    for key, value in job.items():
+        print(f"  {key}: '{value}' (Type: {type(value).__name__})")
 
-    job["position"] = normalize(job["position"])
-    job["fachbereich"] = normalize(job["fachbereich"])
-    job["ort"] = extract_city(job["ort"])
+    job["position"] = normalize(job["position"]) if job["position"] else ""
+    job["department"] = normalize(job["department"]) if job["department"] else ""
+    job["ort"] = extract_city(job["ort"]) if job["ort"] else None
     return job
 
 def load_candidates():
@@ -105,8 +122,8 @@ def load_candidates():
     cur = conn.cursor()
     cur.execute("""
         SELECT id, first_name, last_name, status, position_now, department,
-               gehalt, wohnort, wunscharbeitsort, regionale_verfuegbarkeit
-        FROM candidates_test
+               gehaltswunsch, wohnort, wunscharbeitsort, regionale_verfuegbarkeit
+        FROM candidates
         WHERE status != 'not interested'
     """)
     rows = cur.fetchall()
@@ -120,9 +137,9 @@ def load_candidates():
         for f in ["position_now", "department", "wohnort", "wunscharbeitsort"]:
             k[f] = normalize(k.get(f))
         try:
-            k["gehalt"] = int(str(k.get("gehalt")).replace(".", "").replace(",", ""))
+            k["gehaltswunsch"] = int(str(k.get("gehaltswunsch")).replace(".", "").replace(",", ""))
         except:
-            k["gehalt"] = None
+            k["gehaltswunsch"] = None
 
         rv = normalize(k.get("regionale_verfuegbarkeit"))
         if "deutschland" in rv:
@@ -184,10 +201,10 @@ def match_candidates(job, candidates):
             continue
 
         fachbereiche = [f.strip() for f in (c.get("department") or "").split(",")]
-        if job["fachbereich"] not in fachbereiche:
+        if job["department"] not in fachbereiche:
             continue
 
-        sal = salary_score(c.get("gehalt"), job["gehalt_von"], job["gehalt_bis"])
+        sal = salary_score(c.get("gehaltswunsch"), job["gehalt_von"], job["gehalt_bis"])
         drv, dist = fahrtweg_score(c, job["ort"])
 
         gewicht = 0
@@ -214,7 +231,7 @@ def match_candidates(job, candidates):
             "id": c["id"],
             "name": f"{c.get('first_name')} {c.get('last_name')}",
             "position_now": c.get("position_now"),
-            "gehalt": c.get("gehalt"),
+            "gehaltswunsch": c.get("gehaltswunsch"),
             "gehalts_score": sal,
             "fahrtweg_score": drv,
             "fahrtweg_km": dist,
@@ -223,10 +240,120 @@ def match_candidates(job, candidates):
             "fehlende_daten": fehlend
         })
 
+    # Sortierung: 
+    # 1. Kandidaten MIT Score vor Kandidaten OHNE Score
+    # 2. Bei gleichem Score-Status: Höhere Datenvollständigkeit bevorzugt
+    # 3. Dann höherer Gesamt-Score
     matches.sort(
-        key=lambda x: (x["gesamt_score"] is None, -(x["gesamt_score"] or 0))
+        key=lambda x: (
+            x["gesamt_score"] is None,           # Kandidaten ohne Score ans Ende
+            -x["datenvollstaendigkeit"],          # Mehr Daten = besser
+            -(x["gesamt_score"] or 0)             # Höherer Score = besser
+        )
     )
     return matches
+
+# --------------------------------------------------
+# EXCEL EXPORT
+# --------------------------------------------------
+def export_to_excel(job, candidates_data, results, output_dir=RESULTS_DIR):
+    """
+    Exportiert Matching-Ergebnisse als Excel-Datei mit vollständigen Kandidaten- und Job-Daten
+    """
+    # Erstelle Verzeichnis falls nicht vorhanden
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Dateiname mit Timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"matching_job_{job['id']}_{timestamp}.xlsx"
+    filepath = os.path.join(output_dir, filename)
+    
+    # Lade vollständige Kandidatendaten aus DB
+    conn = psycopg.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    
+    # Hole IDs der gematchten Kandidaten
+    candidate_ids = [r['id'] for r in results]
+    
+    if not candidate_ids:
+        print("⚠ Keine Kandidaten zum Exportieren")
+        cur.close()
+        conn.close()
+        return None
+    
+    # Lade vollständige Kandidatendaten
+    placeholders = ','.join(['%s'] * len(candidate_ids))
+    cur.execute(f"""
+        SELECT id, first_name, last_name, e_mail, tel, position_now, 
+               department, gehaltswunsch, wohnort, wunscharbeitsort, 
+               regionale_verfuegbarkeit, status, qualification, 
+               next_career_step, short_note
+        FROM candidates
+        WHERE id IN ({placeholders});
+    """, candidate_ids)
+    
+    candidates_full = cur.fetchall()
+    cols_candidates = [desc[0] for desc in cur.description]
+    
+    # Lade vollständige Job-Daten
+    cur.execute("""
+        SELECT id, position, department, ort, gehalt_von, gehalt_bis,
+               job_description, long_note, klinik
+        FROM jobs
+        WHERE id = %s;
+    """, (job['id'],))
+    
+    job_full = cur.fetchone()
+    cols_job = [desc[0] for desc in cur.description]
+    
+    cur.close()
+    conn.close()
+    
+    # Erstelle DataFrames
+    df_candidates = pd.DataFrame(candidates_full, columns=cols_candidates)
+    df_job = pd.DataFrame([job_full], columns=cols_job)
+    
+    # Erstelle Matching-Ergebnisse DataFrame
+    matching_results = []
+    for r in results:
+        matching_results.append({
+            'kandidat_id': r['id'],
+            'kandidat_name': r['name'],
+            'gesamt_score': r['gesamt_score'],
+            'gehalts_score': r['gehalts_score'],
+            'fahrtweg_score': r['fahrtweg_score'],
+            'fahrtweg_km': r['fahrtweg_km'],
+            'datenvollstaendigkeit': f"{int(r['datenvollstaendigkeit']*100)}%",
+            'fehlende_daten': ', '.join(r['fehlende_daten']) if r['fehlende_daten'] else 'Keine'
+        })
+    
+    df_matching = pd.DataFrame(matching_results)
+    
+    # Merge Kandidaten mit Matching-Ergebnissen
+    df_export = df_matching.merge(
+        df_candidates, 
+        left_on='kandidat_id', 
+        right_on='id', 
+        how='left'
+    )
+    
+    # Speichere als Excel mit mehreren Sheets
+    with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+        # Sheet 1: Matching-Übersicht
+        df_export.to_excel(writer, sheet_name='Matching_Ergebnisse', index=False)
+        
+        # Sheet 2: Job-Details
+        df_job.to_excel(writer, sheet_name='Job_Details', index=False)
+        
+        # Sheet 3: Nur Matching-Scores
+        df_matching.to_excel(writer, sheet_name='Scores', index=False)
+    
+    print(f"\n✓ Excel-Datei erstellt: {filepath}")
+    print(f"  Sheets: Matching_Ergebnisse, Job_Details, Scores")
+    print(f"  Anzahl Kandidaten: {len(df_export)}")
+    
+    return filepath
 
 # --------------------------------------------------
 # MAIN
@@ -243,7 +370,7 @@ if __name__ == "__main__":
 
         job = load_job(job_id)
         print("\nSTELLE:")
-        print(f"{job['position']} | {job['fachbereich']} | {job['ort']} | "
+        print(f"{job['position']} | {job['department']} | {job['ort']} | "
               f"{job['gehalt_von']} – {job['gehalt_bis']} EUR\n")
 
         candidates = load_candidates()
@@ -254,9 +381,56 @@ if __name__ == "__main__":
         for i, r in enumerate(results[:10], 1):
             print(f"{i}. {r['name']} (ID {r['id']})")
             print(f"   Aktuelle Position: {r['position_now']}")
-            print(f"   Gehalt: {r['gehalt']}")
+            print(f"   Gehaltswunsch: {r['gehaltswunsch']}")
             print(f"   Scores: Gehalt {r['gehalts_score']} | Fahrtweg {r['fahrtweg_score']} ({r['fahrtweg_km']} km)")
             print(f"   Gesamt-Score: {r['gesamt_score']} ({int(r['datenvollstaendigkeit']*2)}/2 Kriterien)")
             if r["fehlende_daten"]:
                 print(f"   ⚠️ Fehlende Daten: {', '.join(r['fehlende_daten'])}")
             print()
+        
+        # Frage nach Excel-Export
+        if results:
+            export = input("\nMöchten Sie die Ergebnisse als Excel exportieren? (j/n): ").strip().lower()
+            if export in ['j', 'ja', 'y', 'yes']:
+                # Frage nach Anzahl der zu exportierenden Kandidaten
+                print(f"\nInsgesamt {len(results)} Kandidaten gefunden.")
+                anzahl_input = input(f"Wie viele Kandidaten exportieren? (Enter = alle {len(results)}): ").strip()
+                
+                if anzahl_input:
+                    try:
+                        anzahl = int(anzahl_input)
+                        if anzahl < 1:
+                            print("⚠ Ungültige Anzahl, exportiere alle Kandidaten")
+                            anzahl = len(results)
+                        elif anzahl > len(results):
+                            print(f"⚠ Nur {len(results)} Kandidaten verfügbar, exportiere alle")
+                            anzahl = len(results)
+                        else:
+                            print(f"✓ Exportiere Top {anzahl} Kandidaten")
+                    except ValueError:
+                        print("⚠ Ungültige Eingabe, exportiere alle Kandidaten")
+                        anzahl = len(results)
+                else:
+                    anzahl = len(results)
+                
+                # Limitiere results auf gewünschte Anzahl
+                results_to_export = results[:anzahl]
+                
+                # Lade vollständige Kandidatendaten
+                conn = psycopg.connect(**DB_CONFIG)
+                cur = conn.cursor()
+                candidate_ids = [r['id'] for r in results_to_export]
+                placeholders = ','.join(['%s'] * len(candidate_ids))
+                cur.execute(f"""
+                    SELECT *
+                    FROM candidates
+                    WHERE id IN ({placeholders});
+                """, candidate_ids)
+                candidates_full = cur.fetchall()
+                cur.close()
+                conn.close()
+                
+                excel_file = export_to_excel(job, candidates_full, results_to_export)
+                if excel_file:
+                    print(f"\n✓ Excel-Datei kann nun für E-Mail-Versand verwendet werden")
+                    print(f"  Pfad: {excel_file}")
