@@ -81,11 +81,12 @@ def backup_jobs_table():
             
             # DataFrame erstellen
             df = pd.DataFrame(rows, columns=column_names)
-
-            # Dynamische Export-Zeitstempel-Spalten ergänzen
-            now = datetime.now()
-            df["export_timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
-            df["export_date"] = now.strftime("%Y-%m-%d")
+            
+            # Integer-Spalten korrekt konvertieren (nullable Int64)
+            integer_columns = ['gehalt_von', 'gehalt_bis', 'id']
+            for col in integer_columns:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')
         
         row_count = len(df)
         col_count = len(df.columns)

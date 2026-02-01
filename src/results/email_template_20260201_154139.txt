@@ -1,0 +1,20 @@
+TEMPLATE:
+---
+Sehr geehrter [ANREDE] Herr/Frau Dr. [NAME],
+
+im Auftrag unseres Mandanten suchen wir exklusiv [Zeitraum] nach einem [POSITION] im [FACHBEREICH] für [ORT].
+
+[UNTERNEHMEN] bietet Ihnen eine attraktive Vergütung und [DETAILS], sodass Sie Ihre Freizeit ungestört genießen können.
+
+Klingt das interessant für Sie?
+
+Ich freue mich auf Ihre Rückmeldung!
+
+Viele Grüße aus [ORT]
+[UNTERNEHMENSNAME]
+---
+
+STIL-HINWEISE:
+- Tonalität: formell, aber freundlich
+- Anrede-Form: Sie
+- Besonderheiten: Platzhalter für variable Daten, kurze und direkte Sprache

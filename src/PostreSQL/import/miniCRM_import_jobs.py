@@ -23,40 +23,38 @@ from src.db_config import DB_CONFIG
 # --------------------------------------------------
 
 # Pfade
-MAPPING_FILE = r"src\PostreSQL\import\mapping_minicrm_postresql_jobs.xlsx"
 JOBS_FILE = r"data\db\miniCRM\jobs_examples.xlsx"
+SCHEMA_FILE = r"data\db\jobs_master.xlsx"
 
 # --------------------------------------------------
-# MAPPING LADEN
+# MAPPING UND SCHEMA
 # --------------------------------------------------
-def load_mapping():
+def get_direct_mapping():
     """
-    Lädt das Mapping aus der Excel-Datei.
-    Gibt ein Dictionary zurück: {postgresql_spalte: minicrm_spalte}
+    Direktes Mapping zwischen miniCRM Excel-Spalten und PostgreSQL-Spalten.
+    Basierend auf jobs_master.xlsx Schema.
+    
+    Returns:
+        dict: {db_column: minicrm_column}
     """
-    df = pd.read_excel(MAPPING_FILE)
-    
-    # Die Struktur ist: Erste Zeile enthält miniCRM Spalten
-    # Spaltennamen der Excel-Datei = PostgreSQL Spalten
-    postgresql_cols = df.columns.tolist()
-    minicrm_cols = df.iloc[0].tolist()  # Zeile 0 enthält miniCRM Spaltennamen
-    
-    mapping = {}
-    for i, pg_col in enumerate(postgresql_cols):
-        if i == 0:  # Erste Spalte ist "Spaltenname"
-            continue
-        
-        # ID wird automatisch vergeben, daher überspringen
-        if pg_col == 'ID':
-            continue
-        
-        minicrm_col = minicrm_cols[i]
-        
-        # Nur hinzufügen wenn miniCRM Spaltenname existiert (nicht NaN)
-        if pd.notna(minicrm_col):
-            mapping[pg_col] = minicrm_col
-    
-    return mapping
+    return {
+        'position': 'Job: desired position',
+        'department': 'Job: Department',
+        'sonstiges_anforderungen': None,  # Nicht in miniCRM
+        'job_description': 'Job: Job-Description',
+        'long_note': 'Job: long note',
+        'gehalt_von': None,  # Nicht in miniCRM
+        'gehalt_bis': None,  # Nicht in miniCRM
+        'status_job': 'Job: Status',
+        'klinik': 'Job: Name',
+        'ort': None,  # Nicht in miniCRM
+        'status_klinik': None,  # Nicht in miniCRM
+        'kontaktname': 'Job: Decision maker',
+        'email': None,  # Nicht in miniCRM
+        'telefon': 'Job: how / where contacted',
+        'von': None,  # Nicht in miniCRM
+        'bis': None  # Nicht in miniCRM
+    }
 
 
 # --------------------------------------------------
@@ -76,66 +74,41 @@ def load_jobs_from_excel():
 # --------------------------------------------------
 def transform_data(minicrm_df, mapping):
     """
-    Transformiert miniCRM Daten basierend auf dem Mapping.
-    Erstellt ein DataFrame mit PostgreSQL Spaltennamen (bereits sanitiert).
+    Transformiert miniCRM Daten basierend auf dem direkten Mapping.
+    Erstellt ein DataFrame mit PostgreSQL Spaltennamen.
     """
     transformed_data = []
     
-    # Debug: Verfügbare Spalten anzeigen
     print(f"   Verfügbare Excel-Spalten: {list(minicrm_df.columns)[:5]}...")
     
     for _, row in minicrm_df.iterrows():
         pg_row = {}
         
-        for pg_col, minicrm_col in mapping.items():
-            # Versuche exakte Übereinstimmung
+        for db_col, minicrm_col in mapping.items():
+            # Wenn kein Mapping existiert, setze None
+            if minicrm_col is None:
+                pg_row[db_col] = None
+                continue
+            
+            # Hole Wert aus miniCRM DataFrame
             value = None
             if minicrm_col in row.index:
                 value = row[minicrm_col]
-            else:
-                # Versuche case-insensitive Match
-                for col in row.index:
-                    if col.lower() == minicrm_col.lower():
-                        value = row[col]
-                        break
             
             # None/NaN beibehalten für leere Felder
             if pd.isna(value):
-                pg_row[pg_col] = None
+                pg_row[db_col] = None
             else:
                 # Strings trimmen
                 if isinstance(value, str):
                     value = value.strip()
                 
                 # Spezielle Transformationen
-                pg_row[pg_col] = transform_field(pg_col, value)
-        
-        # Spezielle Behandlung für "Bis"-Datum: "ggf. + 6Monate"
-        if 'Bis' in mapping and 'Von' in pg_row and pg_row['Von'] is not None:
-            # Wenn "Bis" nicht gemappt oder leer ist, berechne Von + 6 Monate
-            if 'Bis' not in pg_row or pg_row['Bis'] is None:
-                von_date = pg_row['Von']
-                if isinstance(von_date, (pd.Timestamp, datetime)):
-                    pg_row['Bis'] = von_date + timedelta(days=180)  # ca. 6 Monate
+                pg_row[db_col] = transform_field(db_col, value)
         
         transformed_data.append(pg_row)
     
     df = pd.DataFrame(transformed_data)
-    
-    # Spaltennamen direkt nach Transformation sanitieren
-    df.columns = [sanitize_column_name(col) for col in df.columns]
-    
-    # Spezielle Spalten-Mappings (von Excel-Namen zu DB-Namen)
-    column_mapping = {
-        'status': 'status_job',
-        'name': 'klinik',
-        'name_1': 'kontaktname',
-        'kontaktweg': 'email',
-        'status_1': 'status_klinik'
-    }
-    
-    # Wende Spalten-Mapping an
-    df.rename(columns=column_mapping, inplace=True)
     
     return df
 
@@ -362,8 +335,8 @@ def main():
     try:
         # 1. Mapping laden
         print("\n1. Lade Mapping...")
-        mapping = load_mapping()
-        print(f"✓ {len(mapping)} Spalten-Mappings geladen")
+        mapping = get_direct_mapping()
+        print(f"✓ {len(mapping)} Spalten-Mappings definiert")
         
         # 2. Jobs laden
         print("\n2. Lade Jobs aus Excel...")
@@ -414,8 +387,8 @@ def main():
     except FileNotFoundError as e:
         print(f"\n✗ Datei nicht gefunden: {e}")
         print("Bitte prüfen Sie die Pfade:")
-        print(f"  - Mapping: {MAPPING_FILE}")
         print(f"  - Jobs: {JOBS_FILE}")
+        print(f"  - Schema: {SCHEMA_FILE}")
         return 1
         
     except psycopg.Error as e:
