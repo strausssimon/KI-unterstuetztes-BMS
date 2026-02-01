@@ -3,16 +3,20 @@ JOB-ID: 1004
 KANDIDAT: Mara Fischer
 KANDIDATEN-ID: 844
 E-MAIL: mara.fischer@outlook.com
-SCORE: 4.4
+VORLAGE: Generated from real emails
 ================================================================================
 
-BETREFF: Interessante Stelle als Facharzt, Standortleiter in elmshorn
+BETREFF: Spannende berufliche Möglichkeit
 
-MAIL:
-Betreff: Angebot - Facharzt Stellung mit Standortleitung Radiologie in Elmshorn
+Sehr geehrter Herr Fischer,
 
-Guten Tag Mara,
+Unser Mandant sucht exklusiv eine Stelle als Facharzt, Standortleiter im Bereich der Radiologie in Elmshorn.
 
-Wir haben eine attraktive Position für einen Facharzt im Bereich Radiologie in Elmshorn zu bieten. Der Gehalt liegt zwischen 144.000 und 195.000 EUR. Sind Sie an einem Wechsel interessiert? Wir freuen uns auf Ihre Antwort!
+NAN bietet eine attraktive Vergütung von 144.000 - 195.000 EUR und zahlreiche Vorteile wie eine moderne Position mit vielfältigen Aufgaben.
 
-Mit freundlichen Grüßen.
+Klingt das interessant für Sie?
+
+Ich freue mich auf Ihre Rückmeldung!
+
+Mit freundlichen Grüßen
+[Unterschrift]

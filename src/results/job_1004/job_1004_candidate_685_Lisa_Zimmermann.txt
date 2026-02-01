@@ -3,17 +3,22 @@ JOB-ID: 1004
 KANDIDAT: Lisa Zimmermann
 KANDIDATEN-ID: 685
 E-MAIL: lisa.zimmermann@web.de
-SCORE: 4.4
+VORLAGE: Generated from real emails
 ================================================================================
 
-BETREFF: Interessante Stelle als Facharzt, Standortleiter in elmshorn
+BETREFF: Spannende berufliche Möglichkeit
 
-MAIL:
-Betreff: Stellensuche Facharzt Radiologie in Elmshorn
+Sehr geehrter Herr Zimmermann,
 
-Guten Tag Lisa,
+Unser Mandant sucht exklusiv einen Facharzt, Standortleiter für die Radiologie im Elmshorn.
 
-Wir sind derzeit im Zuge unserer Suche nach einem neuen Standortleiter für die Radiologie in Elmshorn und würden dich gerne für diese Position in Betracht ziehen. Der monatliche Gehalt liegt zwischen 144.000 und 195.000 Euro. Sind Sie an einer Stellensuche interessiert?
+[Hauptteil]
 
-Mit freundlichen Grüßen,
-[Ihr Name]
+nan bietet eine attraktive Vergütung von 144.000 bis 195.000 EUR und zahlreiche Vorteile wie eine moderne Position mit vielfältigen Aufgaben.
+
+Klingt das interessant für Sie?
+
+Ich freue mich auf Ihre Rückmeldung!
+
+Mit freundlichen Grüßen
+[Unterzeichen]
