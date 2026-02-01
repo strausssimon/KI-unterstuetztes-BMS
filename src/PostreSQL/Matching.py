@@ -288,7 +288,7 @@ def export_to_excel(job, candidates_data, results, output_dir=RESULTS_DIR):
         SELECT id, first_name, last_name, e_mail, tel, position_now, 
                department, gehaltswunsch, wohnort, wunscharbeitsort, 
                regionale_verfuegbarkeit, status, qualification, 
-               next_career_step, short_note
+               next_career_step, short_note, skills
         FROM candidates
         WHERE id IN ({placeholders});
     """, candidate_ids)
