@@ -104,6 +104,18 @@ def similarity(a, b):
 def tokenize(text):
     return re.findall(r"\b\w+\b", text.lower())
 
+def requirement_score(requirements, long_note):
+    if not requirements:
+        return 0.0
+    req_terms = tokenize(requirements)
+    if not req_terms:
+        return 0.0
+    note_terms = set(tokenize(long_note or ""))
+    if not note_terms:
+        return 0.0
+    hits = sum(1 for t in req_terms if t in note_terms)
+    return hits / len(req_terms)
+
 def best_fuzzy_match(terms, candidates):
     best_candidate = None
     best_score = 0.0
@@ -339,6 +351,8 @@ def match_candidates(intent, kandidaten_liste):
     ziel_fach = intent.get("fachbereich")
     ziel_state = intent.get("state")
     ziel_land = intent.get("land")
+    sonstige_anforderungen = intent.get("sonstige_anforderungen")
+    has_core_filters = any([ziel_position, ziel_fach, ziel_state, ziel_land, intent.get("ort")])
 
     # Wenn eine Stadt im Intent steht, nutze deren Bundesland als Standard-
     # Gebiet ("größtes Gebiet" = Bundesland der Zielstadt).
@@ -432,6 +446,10 @@ def match_candidates(intent, kandidaten_liste):
         wunsch_info = f"{wunsch} / {w_state}" if w_state else wunsch
 
         passende_roh.append(k)
+        sonstige_score = requirement_score(sonstige_anforderungen, k.get("long_note"))
+        if sonstige_anforderungen and not has_core_filters and sonstige_score == 0.0:
+            passende_roh.pop()
+            continue
         passende.append({
             "kandidat_id": k["id"],
             "name": f"{k.get('first_name', '')} {k.get('last_name', '')}".strip(),
@@ -439,10 +457,15 @@ def match_candidates(intent, kandidaten_liste):
             "fachbereich": k.get("department", "N/A"),
             "wohnort": wohn_info,
             "wunscharbeitsort": wunsch_info,
-            "entfernung_km": round(min_dist, 2) if min_dist is not None else None
+            "entfernung_km": round(min_dist, 2) if min_dist is not None else None,
+            "sonstige_score": sonstige_score,
+            "long_note": k.get("long_note"),
         })
 
-    passende.sort(key=lambda x: x["entfernung_km"] if x["entfernung_km"] is not None else float('inf'))
+    passende.sort(key=lambda x: (
+        -x.get("sonstige_score", 0.0),
+        x["entfernung_km"] if x["entfernung_km"] is not None else float('inf'),
+    ))
     return passende, passende_roh
 
 
