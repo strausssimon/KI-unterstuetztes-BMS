@@ -206,9 +206,26 @@ def main() -> int:
             conn.close()
             return 0
 
-        new_skills = ", ".join(sorted(found_skills))
+        # Bisherige Skills aus der DB in ein Set umwandeln
+        existing_set = set()
+        if current_skills:
+            for part in str(current_skills).split(","):
+                name = part.strip()
+                if name:
+                    existing_set.add(name)
 
-        print("\nGefundene Skills (Vorschlag):")
+        # Vereinigung aus bestehenden und neu gefundenen Skills bilden
+        all_skills = existing_set.union(found_skills)
+
+        # Wenn sich nichts ändert, Hinweis ausgeben und abbrechen
+        if all_skills == existing_set:
+            print("ℹ Alle gefundenen Skills sind bereits eingetragen. Keine Aktualisierung notwendig.")
+            conn.close()
+            return 0
+
+        new_skills = ", ".join(sorted(all_skills))
+
+        print("\nGefundene Skills (Vorschlag, inkl. bereits vorhandener Skills):")
         print(new_skills)
 
         # 7. Bestätigung

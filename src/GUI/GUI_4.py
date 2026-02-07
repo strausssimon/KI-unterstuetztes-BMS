@@ -427,6 +427,8 @@ matching_results = ttk.Treeview(
         "fahrtweg_score",
         "fahrtweg_km",
         "gesamt_score",
+        "skills_gemeinsam",
+        "skills_fehlend",
         "datenvollstaendigkeit",
         "fehlende_daten",
     ],
@@ -444,10 +446,19 @@ for col, width in [
     ("fahrtweg_score", 120),
     ("fahrtweg_km", 110),
     ("gesamt_score", 110),
+    ("skills_gemeinsam", 220),
+    ("skills_fehlend", 220),
     ("datenvollstaendigkeit", 160),
     ("fehlende_daten", 160),
 ]:
-    matching_results.heading(col, text=col)
+    # Deutsche Spaltenüberschriften für die neuen Skill-Spalten
+    heading_text = col
+    if col == "skills_gemeinsam":
+        heading_text = "Übereinstimmende Skills"
+    elif col == "skills_fehlend":
+        heading_text = "Fehlende Job-Skills"
+
+    matching_results.heading(col, text=heading_text)
     matching_results.column(col, width=width)
 
 def render_matching_results(results):
@@ -463,6 +474,8 @@ def render_matching_results(results):
             r.get("fahrtweg_score"),
             r.get("fahrtweg_km"),
             r.get("gesamt_score"),
+            r.get("skills_gemeinsam") or "",
+            r.get("skills_fehlend") or "",
             f"{int((r.get('datenvollstaendigkeit') or 0) * 100)}%",
             ", ".join(r.get("fehlende_daten") or []),
         ])
