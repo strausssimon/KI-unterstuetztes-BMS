@@ -40,7 +40,7 @@ MODELS = {
     "phi3": "phi3:3.8b"             # Kompakt, schnell
 }
 
-DEFAULT_MODEL = "mistral:latest"  # Bestes Modell für deutsche Texte
+DEFAULT_MODEL = "llama3.2:3b"  # Bestes Modell für deutsche Texte
 
 
 def create_empty_job_df():

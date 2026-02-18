@@ -110,7 +110,7 @@ SELBSTCHECK VOR AUSGABE
 2) Falls nein: setze das betreffende Feld auf null.
 
 --------------------------------------------------
-Ausschließlich anhand folgender Informationen aus dem TEXT extrahieren:
+Ordne ausschließlich folgende Infos den Feldern zu:
 \"\"\"{text}\"\"\"
 JSON:
 """
