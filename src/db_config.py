@@ -16,10 +16,10 @@ Verwendung:
 # Docker PostgreSQL Container läuft auf Host-Port 5433
 DB_CONFIG = {
     "host": "localhost",
-    "port": 5432,
+    "port": 5433,
     "dbname": "postgres",
     "user": "postgres",
-    "password": "Start123",
+    "password": "bigdataconsulting",
 }
 
 __all__ = ["DB_CONFIG"]

@@ -270,9 +270,14 @@ def match_candidates(job, candidates):
         if job["department"] not in fachbereiche:
             continue
 
+<<<<<<< HEAD
         # Skill-Matching: Kandidaten mit passenden Skills werden höher bewertet.
         # Kandidaten OHNE hinterlegte Skills werden nicht herausgefiltert,
         # sondern nur ohne Skill-Score berücksichtigt.
+=======
+        # Skill-Matching: nur Kandidaten behalten, bei denen sich
+        # mindestens ein Skill mit den Job-Anforderungen überschneidet
+>>>>>>> 45fcefbde354e7d421ff4c477732a4f62783bd23
         skill_match_score = None
         skill_score = None
         skills_job = None
@@ -286,7 +291,19 @@ def match_candidates(job, candidates):
 
             job_set = _parse_skill_list(job_reqs)
             cand_set = _parse_skill_list(cand_skills)
+<<<<<<< HEAD
             
+=======
+
+            # Berechne Schnittmenge und fehlende Skills (case-insensitiv)
+            inter_lower = job_set & cand_set
+            if not inter_lower:
+                # Kein einziger Skill überschneidet sich -> Kandidat überspringen
+                continue
+
+            missing_lower = job_set - cand_set
+
+>>>>>>> 45fcefbde354e7d421ff4c477732a4f62783bd23
             # Original-Schreibweise aus den Strings rekonstruieren
             job_list = [p.strip() for p in str(job_reqs).split(",") if p.strip()]
             cand_list = [p.strip() for p in str(cand_skills).split(",") if p.strip()] if cand_skills else []
@@ -295,6 +312,7 @@ def match_candidates(job, candidates):
 
             skills_job = ", ".join(job_list) if job_list else None
             skills_kandidat = ", ".join(cand_list) if cand_list else None
+<<<<<<< HEAD
 
             if cand_set:
                 # Berechne Schnittmenge und fehlende Skills (case-insensitiv)
@@ -327,6 +345,19 @@ def match_candidates(job, candidates):
                 ) if missing_lower else None
                 skill_match_score = None
                 skill_score = None
+=======
+            skills_gemeinsam = ", ".join(
+                sorted({job_map.get(s, s) for s in inter_lower})
+            ) if inter_lower else None
+            skills_fehlend = ", ".join(
+                sorted({job_map.get(s, s) for s in missing_lower})
+            ) if missing_lower else None
+
+            # Overlap-Ratio und abgeleiteter Skill-Score (1-5)
+            skill_match_score = len(inter_lower) / len(job_set) if job_set else 0.0
+            # Mappe (0,1] auf [1,5]
+            skill_score = 1 + int(skill_match_score * 4) if skill_match_score > 0 else None
+>>>>>>> 45fcefbde354e7d421ff4c477732a4f62783bd23
 
         sal = salary_score(c.get("gehaltswunsch"), job["gehalt_von"], job["gehalt_bis"])
         drv, dist = fahrtweg_score(c, job["ort"])
