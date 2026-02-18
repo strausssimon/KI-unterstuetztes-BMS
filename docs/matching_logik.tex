@@ -1,0 +1,24 @@
+% Kurzbeschreibung Matching.py
+% Maximal 30 Zeilen, Stichpunkte / kurze Sätze
+
+\textbf{Matching.py -- Job zu Kandidaten}
+
+Lädt eine ausgewählte Stelle aus der Tabelle \texttt{jobs} anhand der Job-ID.
+Normalisiert Positions-, Fachbereichs- und Ortsangaben der Stelle.
+Lädt alle aktiven Kandidaten aus der Tabelle \texttt{candidates} (Status \glqq not interested\grqq{} wird ausgeschlossen).
+Bereinigt und normalisiert Kandidatenfelder wie \texttt{position\_now}, \texttt{department}, \texttt{wohnort} und \texttt{wunscharbeitsort}.
+Interpretiert \texttt{regionale\_verfuegbarkeit}: \glqq deutschlandweit\grqq{} wird als sehr großer Radius (1000 km) gesetzt, sonst werden Kilometerangaben aus dem Text extrahiert.
+Ermittelt für Stellen- und Kandidatenorte geografische Koordinaten aus der Datei \texttt{Staedte\_Deutschland.csv}.
+Berechnet Distanzen (Fahrtweg) zwischen Job-Ort und Wohn- bzw. Wunscharbeitsort (inkl. Bundesland- und DE-Sonderfällen).
+Nutzt Karrierestufen-Logik (\texttt{KARRIERE\_PFADE}), um zu prüfen, ob die aktuelle Position des Kandidaten zur Zielposition passt.
+Prüft, ob der Fachbereich des Kandidaten zum Fachbereich der Stelle passt.
+Bewertet die Übereinstimmung von Gehaltswunsch und angebotener Gehaltsspanne mit einem diskreten Gehalts-Score (1--5).
+Bewertet den Fahrtweg relativ zur regionalen Verfügbarkeit mit einem Fahrtweg-Score (1--5).
+Optional: wertet Skills aus den Job-Anforderungen gegen Kandidaten-Skills aus.
+Kandidaten mit passenden Skills erhalten einen Skill-Score; Kandidaten ohne hinterlegte Skills werden nicht ausgeschlossen, erhalten aber keinen Skill-Score.
+Kandidaten mit vorhandenen, aber vollständig unpassenden Skills werden vom Matching ausgeschlossen.
+Kombiniert Gehalts-, Fahrtweg- und Skill-Score zu einem Gesamt-Score (gewichtetes arithmetisches Mittel).
+Berechnet zusätzlich eine Kennzahl zur Datenvollständigkeit (Anteil der vorhandenen Score-Komponenten).
+Liefert eine nach Score und Datenvollständigkeit sortierte Kandidatenliste zurück.
+Kann die Matching-Ergebnisse inkl. vollständiger Kandidaten- und Job-Daten in eine Excel-Datei exportieren.
+

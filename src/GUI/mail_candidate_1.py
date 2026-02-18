@@ -182,11 +182,12 @@ def load_matching_results(filepath):
         return None, None
 
 
-def generate_email_with_ollama(candidate, job, model=DEFAULT_MODEL):
+def build_email_prompt(candidate, job, tail_instructions: str | None = None) -> str:
+    """Baut den Prompt für die LLM-E-Mail-Erzeugung.
+
+    "tail_instructions" kann verwendet werden, um den Standard-
+    Anweisungs-/FORMAT-Block zu überschreiben (z.B. aus der GUI).
     """
-    Generiert personalisierte E-Mail mit Ollama LLM
-    """
-    # Erstelle kurzen, fokussierten Prompt für Mistral
     first_name = candidate.get('first_name', 'Sehr geehrte/r')
     position = job.get('position', 'Facharzt')
     department = job.get('department', 'Radiologie')
@@ -194,12 +195,41 @@ def generate_email_with_ollama(candidate, job, model=DEFAULT_MODEL):
     gehalt_von = job.get('gehalt_von', 'N/A')
     gehalt_bis = job.get('gehalt_bis', 'N/A')
     qualification = candidate.get('qualification', 'Facharzt')
-    
-    prompt = f"""Schreibe eine kurze, professionelle Recruiting-E-Mail auf Deutsch (max. 3 Sätze).
+    long_note = job.get('long_note') or ''
+
+    # Skill-Informationen für das LLM zusammenstellen
+    job_skills = (
+        job.get('sonstiges_anforderungen')
+        or job.get('skills_job')
+        or ''
+    )
+    matched_skills = (
+        candidate.get('skills_gemeinsam')
+        or candidate.get('skills_match')
+        or ''
+    )
+
+    header = f"""Schreibe eine kurze, professionelle Recruiting-E-Mail auf Deutsch mit maximal 5 Sätzen.
+WICHTIG: Sprich die Kandidatin / den Kandidaten konsequent mit "Sie" an (formelle Anrede, kein "du").
 
 KANDIDAT: {first_name}, {qualification}
 POSITION: {position} {department} in {ort}
 GEHALT: {gehalt_von}-{gehalt_bis} EUR
+
+LONG_NOTE (Stellenbeschreibung):
+{long_note}
+
+GESUCHTE_SKILLS (aus der Stelle): {job_skills}
+ÜBEREINSTIMMENDE_SKILLS (Kandidat): {matched_skills}"""
+
+    if tail_instructions is None:
+        tail = f"""
+
+Anweisungen für den Inhalt:
+- Formuliere höchstens ZWEI sehr kurze Sätze, die die Stelle anhand der LONG_NOTE grob und attraktiv beschreiben.
+- Baue ein bis zwei Sätze ein, die die gesuchten Skills und die übereinstimmenden Skills positiv hervorheben (ohne Aufzählungslisten, sondern fließender Text).
+- Erwähne Position, Ort und Gehalt in natürlicher Form.
+- Schließe mit einer freundlichen Frage nach Gesprächs- oder Informationsinteresse.
 
 FORMAT:
 BETREFF: [Kurzer Betreff]
@@ -207,12 +237,19 @@ BETREFF: [Kurzer Betreff]
 MAIL:
 Guten Tag {first_name},
 
-[3 Sätze: Vorstellung der Position, Gehalt und Ort erwähnen, nach Interesse fragen]
+[Text nach obigen Anweisungen, maximal 5 Sätze.]
 
 Mit freundlichen Grüßen"""
+    else:
+        # Benutzerdefinierter Block wird unverändert angehängt
+        tail = "\n" + tail_instructions.strip()
 
+    return header + tail
+
+
+def generate_email_with_ollama_custom_prompt(prompt: str, job, model=DEFAULT_MODEL):
+    """Sendet einen gegebenen Prompt an Ollama und parst Betreff/Text."""
     try:
-        # Ollama API Call
         response = requests.post(
             OLLAMA_URL,
             json={
@@ -222,24 +259,22 @@ Mit freundlichen Grüßen"""
                 "options": {
                     "temperature": 0.7,
                     "top_p": 0.9,
-                    "num_predict": 200  # Limitiere Ausgabelänge
+                    "num_predict": 200
                 }
             },
-            timeout=180  # Erhöhter Timeout auf 3 Minuten für große Modelle
+            timeout=180
         )
-        
+
         if response.status_code == 200:
             result = response.json()
             email_text = result.get('response', '').strip()
-            
-            # Parse Betreff und Mail-Text
+
             if "BETREFF:" in email_text and "MAIL:" in email_text:
                 parts = email_text.split("MAIL:")
                 betreff = parts[0].replace("BETREFF:", "").strip()
                 mail = parts[1].strip()
                 return betreff, mail
             else:
-                # Fallback: Ganzer Text ist Mail
                 betreff = f"Interessante Stelle als {job.get('position', 'Facharzt')} in {job.get('ort', 'Deutschland')}"
                 return betreff, email_text
         else:
@@ -248,7 +283,7 @@ Mit freundlichen Grüßen"""
                 print(f"  → Modell '{model}' nicht gefunden!")
                 print(f"  → Installieren Sie es mit: ollama pull {model.split(':')[0]}")
             return None, None
-            
+
     except requests.exceptions.RequestException as e:
         print(f"✗ Verbindungsfehler zu Ollama: {e}")
         print("  Tipp: Stellen Sie sicher, dass Ollama läuft (ollama serve)")
@@ -256,6 +291,12 @@ Mit freundlichen Grüßen"""
     except Exception as e:
         print(f"✗ Fehler bei E-Mail-Generierung: {e}")
         return None, None
+
+
+def generate_email_with_ollama(candidate, job, model=DEFAULT_MODEL):
+    """Rückwärtskompatible Hilfsfunktion: baut Standard-Prompt und ruft Ollama."""
+    prompt = build_email_prompt(candidate, job)
+    return generate_email_with_ollama_custom_prompt(prompt, job, model=model)
 
 
 def generate_fallback_email(candidate, job):
@@ -267,19 +308,58 @@ def generate_fallback_email(candidate, job):
     klinik = job.get('klinik', 'unserem Kunden')
     gehalt_von = job.get('gehalt_von', 'N/A')
     gehalt_bis = job.get('gehalt_bis', 'N/A')
+    long_note = job.get('long_note') or ''
+
+    # Kurze, max. zwei Sätze aus long_note extrahieren
+    def _short_long_note(text: str, max_sentences: int = 2) -> str:
+        if not text:
+            return ""
+        # Sehr einfache Satzaufteilung an Punkt/Fragezeichen/Ausrufezeichen
+        import re as _re
+        parts = _re.split(r"(?<=[.!?])\s+", text.strip())
+        parts = [p.strip() for p in parts if p.strip()]
+        return " " .join(parts[:max_sentences])
+
+    long_note_short = _short_long_note(long_note)
+
+    # Skills: gesuchte und übereinstimmende Skills kurz beschreiben
+    job_skills = (
+        job.get('sonstiges_anforderungen')
+        or job.get('skills_job')
+        or ''
+    )
+    matched_skills = (
+        candidate.get('skills_gemeinsam')
+        or candidate.get('skills_match')
+        or ''
+    )
+
+    skill_sentence = ""
+    if job_skills and matched_skills:
+        skill_sentence = (
+            f"Besonders interessant ist, dass die gesuchten Schwerpunkte ({job_skills}) "
+            f"sehr gut zu Ihren vorhandenen Erfahrungen ({matched_skills}) passen."
+        )
+    elif job_skills:
+        skill_sentence = (
+            f"Für die Position werden insbesondere folgende Schwerpunkte gesucht: {job_skills}."
+        )
     
     betreff = f"Interessante Stelle als {position} {department} in {ort}"
-    
+
+    beschreibung = ""
+    if long_note_short:
+        beschreibung = f" {long_note_short}"
+
+    skills_text = f"\n\n{skill_sentence}" if skill_sentence else ""
+
     mail = f"""Guten Tag {first_name},
 
 über unser Netzwerk sind wir auf Ihr Profil aufmerksam geworden.
 
-Aktuell betreuen wir eine spannende Position als {position} im Bereich {department} bei {klinik} in {ort}.
+Aktuell betreuen wir eine spannende Position als {position} im Bereich {department} bei {klinik} in {ort}.{beschreibung}
 
-Die Position bietet:
-• Attraktive Vergütung: {gehalt_von} - {gehalt_bis} EUR
-• Standort: {ort}
-• Karrieremöglichkeiten im Fachbereich {department}
+Die Position bietet unter anderem eine attraktive Vergütung von {gehalt_von} bis {gehalt_bis} EUR sowie gute Entwicklungsmöglichkeiten im Fachbereich {department}.{skills_text}
 
 Hätten Sie Interesse an näheren Informationen zu dieser Position?
 

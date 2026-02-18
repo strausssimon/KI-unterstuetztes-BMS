@@ -14,7 +14,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.db_config import DB_CONFIG
-from src.GUI.Matching import (
+from GUI.Matching_2 import (
     load_job as matching_load_job,
     load_candidates as matching_load_candidates,
     match_candidates as matching_match_candidates,
@@ -26,7 +26,7 @@ from src.GUI.intelligente_Suchabfrage_7 import (
     match_candidates as search_match_candidates,
     export_to_excel as search_export_to_excel,
 )
-from src.GUI.Strukturierter_Datenimport_LLM import (
+from GUI.Strukturierter_Datenimport_LLM_1 import (
     extract_candidate as llm_extract_candidate,
 )
 
