@@ -33,6 +33,8 @@ from src.GUI.Strukturierter_Datenimport_LLM import (
 from src.GUI.mail_candidate import (
     generate_email_with_ollama as mail_generate_email_with_ollama,
     generate_fallback_email as mail_generate_fallback_email,
+    build_email_prompt as mail_build_email_prompt,
+    generate_email_with_ollama_custom_prompt as mail_generate_email_with_ollama_custom_prompt,
 )
 
 # --------------------------------------------------
@@ -156,7 +158,9 @@ def fetch_candidate_for_email(conn, candidate_id):
 def fetch_job_for_email(conn, job_id):
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT id, position, department, ort, klinik, gehalt_von, gehalt_bis
+            SELECT id, position, department, ort, klinik,
+                   gehalt_von, gehalt_bis,
+                   job_description, long_note, sonstiges_anforderungen
             FROM jobs
             WHERE id::text = %s;
         """, (str(job_id),))
@@ -210,35 +214,104 @@ def fetch_row_safe(conn, table_name, row_id):
         return dict(zip(cols, row))
 
 # --------------------------------------------------
+# DESIGN PALETTE (Apple-inspiriertes, minimalistisches UI)
+# --------------------------------------------------
+APPLE_BG = "#f5f5f7"          # helles, leicht graues Hintergrundweiß
+APPLE_SURFACE = "#ffffff"     # Karten / Flächen
+APPLE_SURFACE_ALT = "#f9fafb" # leicht abgesetzte Flächen
+APPLE_BORDER = "#d1d5db"      # dezente Rahmenfarbe
+APPLE_ACCENT = "#22b8cf"      # blaugrüner Akzent
+APPLE_ACCENT_DARK = "#0f8091" # dunklere Akzentvariante
+APPLE_TEXT = "#111827"        # Primärtext
+APPLE_MUTED_TEXT = "#6b7280"  # Sekundärtext
+APPLE_HEADER_BG = "#e5e7eb"   # Tabellenheader
+
+# Typografie
+# Hinweis: Die Fonts "Liter" und "Quattrocento Sans" müssen im System installiert sein.
+BASE_FONT = ("Quattrocento Sans", 10)
+SMALL_FONT = ("Quattrocento Sans", 9)
+HEADING_FONT = ("Liter", 13, "bold")
+
+# --------------------------------------------------
 # MAIN WINDOW
 # --------------------------------------------------
 root = tk.Tk()
 root.title("Bewerbermanagementsystem")
 root.geometry("1500x850")
-root.configure(bg="#eef1f5")
+root.configure(bg=APPLE_BG)
 
 # --------------------------------------------------
 # STYLE
 # --------------------------------------------------
 style = ttk.Style()
-style.theme_use("default")
+style.theme_use("clam")
 
-style.configure("Treeview",
-                background="white",
-                foreground="#1f2933",
-                rowheight=26,
-                fieldbackground="white",
-                font=("Segoe UI", 10))
+# Grundlayout
+style.configure("TFrame", background=APPLE_BG)
+style.configure("Sidebar.TFrame", background=APPLE_SURFACE)
 
-style.configure("Treeview.Heading",
-                font=("Segoe UI", 10, "bold"),
-                background="#e5e7eb")
+# Notebook (Tabs)
+style.configure(
+    "TNotebook",
+    background=APPLE_BG,
+    borderwidth=0,
+)
+style.configure(
+    "TNotebook.Tab",
+    font=BASE_FONT,
+    padding=(18, 10),
+    background=APPLE_SURFACE_ALT,
+    foreground=APPLE_MUTED_TEXT,
+)
+style.map(
+    "TNotebook.Tab",
+    background=[("selected", APPLE_SURFACE)],
+    foreground=[("selected", APPLE_TEXT)],
+)
 
-style.configure("TNotebook.Tab",
-                font=("Segoe UI", 11),
-                padding=8)
+# Tabellen (Treeview)
+style.configure(
+    "Treeview",
+    background=APPLE_SURFACE,
+    foreground=APPLE_TEXT,
+    rowheight=26,
+    fieldbackground=APPLE_SURFACE,
+    bordercolor=APPLE_BORDER,
+    borderwidth=0,
+    font=BASE_FONT,
+)
+style.map(
+    "Treeview",
+    background=[("selected", "#e0f7fb")],
+    foreground=[("selected", APPLE_TEXT)],
+)
 
-style.configure("Sidebar.TFrame", background="#f8fafc")
+style.configure(
+    "Treeview.Heading",
+    font=BASE_FONT,
+    background=APPLE_HEADER_BG,
+    foreground=APPLE_MUTED_TEXT,
+    relief="flat",
+)
+style.map(
+    "Treeview.Heading",
+    background=[("active", APPLE_HEADER_BG)],
+)
+
+# Buttons
+style.configure(
+    "TButton",
+    font=BASE_FONT,
+    padding=(12, 6),
+    background=APPLE_SURFACE_ALT,
+    foreground=APPLE_TEXT,
+    borderwidth=0,
+)
+style.map(
+    "TButton",
+    background=[("active", "#e0f2fe"), ("pressed", "#dbeafe")],
+    foreground=[("disabled", APPLE_MUTED_TEXT)],
+)
 
 # --------------------------------------------------
 # MAIN SPLIT
@@ -249,20 +322,29 @@ main_pane.pack(fill="both", expand=True)
 # --------------------------------------------------
 # LEFT: FILTER SIDEBAR
 # --------------------------------------------------
-filter_frame = ttk.Frame(main_pane, width=260, style="Sidebar.TFrame")
+filter_frame = ttk.Frame(main_pane, width=260, style="Sidebar.TFrame", padding=(20, 20))
 main_pane.add(filter_frame, weight=1)
 
-tk.Label(filter_frame, text="Filter",
-         font=("Segoe UI", 13, "bold"),
-         bg="#f8fafc").pack(anchor="w", padx=15, pady=(15, 10))
+tk.Label(
+    filter_frame,
+    text="Filter",
+    font=HEADING_FONT,
+    bg=APPLE_SURFACE,
+    fg=APPLE_TEXT,
+).pack(anchor="w", padx=5, pady=(0, 16))
 
 filters = {}
 
 def add_filter(label):
-    tk.Label(filter_frame, text=label, bg="#f8fafc",
-             font=("Segoe UI", 9)).pack(anchor="w", padx=15)
+    tk.Label(
+        filter_frame,
+        text=label,
+        bg=APPLE_SURFACE,
+        fg=APPLE_MUTED_TEXT,
+        font=SMALL_FONT,
+    ).pack(anchor="w", padx=5)
     entry = ttk.Entry(filter_frame)
-    entry.pack(fill="x", padx=15, pady=(0, 10))
+    entry.pack(fill="x", padx=0, pady=(4, 12))
     filters[label] = entry
 
 add_filter("Position")
@@ -277,7 +359,7 @@ data_frame = ttk.Frame(main_pane)
 main_pane.add(data_frame, weight=4)
 
 notebook = ttk.Notebook(data_frame)
-notebook.pack(fill="both", expand=True, padx=5, pady=5)
+notebook.pack(fill="both", expand=True, padx=15, pady=15)
 
 # --------------------------------------------------
 # JOBS TAB
@@ -427,6 +509,8 @@ matching_results = ttk.Treeview(
         "fahrtweg_score",
         "fahrtweg_km",
         "gesamt_score",
+        "skills_gemeinsam",
+        "skills_fehlend",
         "datenvollstaendigkeit",
         "fehlende_daten",
     ],
@@ -444,10 +528,19 @@ for col, width in [
     ("fahrtweg_score", 120),
     ("fahrtweg_km", 110),
     ("gesamt_score", 110),
+    ("skills_gemeinsam", 220),
+    ("skills_fehlend", 220),
     ("datenvollstaendigkeit", 160),
     ("fehlende_daten", 160),
 ]:
-    matching_results.heading(col, text=col)
+    # Deutsche Spaltenüberschriften für die neuen Skill-Spalten
+    heading_text = col
+    if col == "skills_gemeinsam":
+        heading_text = "Übereinstimmende Skills"
+    elif col == "skills_fehlend":
+        heading_text = "Fehlende Job-Skills"
+
+    matching_results.heading(col, text=heading_text)
     matching_results.column(col, width=width)
 
 def render_matching_results(results):
@@ -463,6 +556,8 @@ def render_matching_results(results):
             r.get("fahrtweg_score"),
             r.get("fahrtweg_km"),
             r.get("gesamt_score"),
+            r.get("skills_gemeinsam") or "",
+            r.get("skills_fehlend") or "",
             f"{int((r.get('datenvollstaendigkeit') or 0) * 100)}%",
             ", ".join(r.get("fehlende_daten") or []),
         ])
@@ -534,11 +629,29 @@ search_controls = ttk.Frame(search_tab)
 search_controls.pack(fill="x", padx=10, pady=10)
 
 ttk.Label(search_controls, text="Suchanfrage").pack(anchor="w")
-search_input = tk.Text(search_controls, height=3)
+search_input = tk.Text(
+    search_controls,
+    height=3,
+    bg=APPLE_SURFACE,
+    bd=0,
+    relief="flat",
+    highlightthickness=1,
+    highlightbackground=APPLE_BORDER,
+    font=BASE_FONT,
+)
 search_input.pack(fill="x", pady=(4, 8))
 
 ttk.Label(search_controls, text="Sonstige Anforderungen").pack(anchor="w")
-search_other_input = tk.Text(search_controls, height=2)
+search_other_input = tk.Text(
+    search_controls,
+    height=2,
+    bg=APPLE_SURFACE,
+    bd=0,
+    relief="flat",
+    highlightthickness=1,
+    highlightbackground=APPLE_BORDER,
+    font=BASE_FONT,
+)
 search_other_input.pack(fill="x", pady=(4, 8))
 
 search_status = ttk.Label(search_controls, text="")
@@ -637,10 +750,29 @@ import_controls = ttk.Frame(import_tab)
 import_controls.pack(fill="x", padx=10, pady=10)
 
 ttk.Label(import_controls, text="Freitext").pack(anchor="w")
-import_input = tk.Text(import_controls, height=6)
+import_input = tk.Text(
+    import_controls,
+    height=6,
+    bg=APPLE_SURFACE,
+    bd=0,
+    relief="flat",
+    highlightthickness=1,
+    highlightbackground=APPLE_BORDER,
+    font=BASE_FONT,
+)
 import_input.pack(fill="x", pady=(4, 8))
 
-import_output = tk.Text(import_tab, height=12, state="disabled", bg="white")
+import_output = tk.Text(
+    import_tab,
+    height=12,
+    state="disabled",
+    bg=APPLE_SURFACE,
+    bd=0,
+    relief="flat",
+    highlightthickness=1,
+    highlightbackground=APPLE_BORDER,
+    font=BASE_FONT,
+)
 import_output.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
 def run_llm_extract():
@@ -694,7 +826,33 @@ email_debug = tk.BooleanVar(value=False)
 email_status = ttk.Label(email_controls, text="")
 email_status.grid(row=1, column=0, columnspan=4, sticky="w", pady=(6, 0))
 
-email_output = tk.Text(email_tab, height=16, state="disabled", bg="white")
+# Bearbeitbarer Prompt-Bereich
+email_prompt_label = ttk.Label(email_tab, text="LLM-Prompt (wird beim ersten Klick erzeugt und kann angepasst werden)")
+email_prompt_label.pack(anchor="w", padx=10, pady=(0, 2))
+
+email_prompt_text = tk.Text(
+    email_tab,
+    height=10,
+    bg=APPLE_SURFACE,
+    bd=0,
+    relief="flat",
+    highlightthickness=1,
+    highlightbackground=APPLE_BORDER,
+    font=BASE_FONT,
+)
+email_prompt_text.pack(fill="x", expand=False, padx=10, pady=(0, 8))
+
+email_output = tk.Text(
+    email_tab,
+    height=16,
+    state="disabled",
+    bg=APPLE_SURFACE,
+    bd=0,
+    relief="flat",
+    highlightthickness=1,
+    highlightbackground=APPLE_BORDER,
+    font=BASE_FONT,
+)
 email_output.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
 def parse_candidate_ids(raw):
@@ -732,10 +890,12 @@ def run_email_generation():
         candidate_ids = parse_candidate_ids(email_candidate_ids.get())
         if not candidate_ids and matching_state.get("results"):
             candidate_ids = [r.get("id") for r in matching_state["results"] if r.get("id")]
-
         if not candidate_ids:
-            messagebox.showerror("E-Mails", "Bitte Kandidaten-IDs angeben oder Matching ausfuehren.")
+            messagebox.showerror("E-Mails", "Keine Kandidaten ausgewählt oder im Matching-Ergebnis gefunden.")
             return
+
+        # Zweistufiger Ablauf: Zuerst Prompt erzeugen/anzeigen, dann beim zweiten Klick Mails generieren
+        current_prompt = email_prompt_text.get("1.0", tk.END).strip()
 
         conn = psycopg.connect(**DB_CONFIG)
         try:
@@ -743,31 +903,91 @@ def run_email_generation():
             if not job:
                 messagebox.showerror("E-Mails", f"Job {job_id} nicht gefunden.")
                 return
+
+            # 1. Schritt: Prompt-Vorschlag erzeugen und anzeigen
+            if not current_prompt:
+                # Verwende den ersten Kandidaten, um einen Beispiel-Prompt zu bauen
+                first_cid = candidate_ids[0]
+                candidate = fetch_candidate_for_email(conn, first_cid)
+                if not candidate:
+                    messagebox.showerror("E-Mails", f"Kandidat {first_cid} nicht gefunden.")
+                    return
+
+                # Matching-Skill-Infos für den Beispiel-Kandidaten anreichern
+                match_row = None
+                for r in matching_state.get("results") or []:
+                    if r.get("id") == first_cid:
+                        match_row = r
+                        break
+                if match_row:
+                    if match_row.get("skills_gemeinsam"):
+                        candidate["skills_gemeinsam"] = match_row.get("skills_gemeinsam")
+                    if match_row.get("skills_fehlend"):
+                        candidate["skills_fehlend"] = match_row.get("skills_fehlend")
+
+                prompt_example = mail_build_email_prompt(candidate, job)
+                email_prompt_text.delete("1.0", tk.END)
+                email_prompt_text.insert(tk.END, prompt_example)
+                email_status.configure(
+                    text="Prompt erzeugt. Bitte anpassen und erneut auf 'E-Mails generieren' klicken."
+                )
+                return
+
+            # 2. Schritt: Benutzerdefinierten Prompt verwenden, um für alle Kandidaten Mails zu erzeugen
+            # Versuche, den Anweisungs-Block ab "Anweisungen für den Inhalt:" zu extrahieren
+            marker = "Anweisungen für den Inhalt:"
+            idx = current_prompt.find(marker)
+            if idx != -1:
+                prompt_tail = current_prompt[idx:]
+            else:
+                # Wenn Marker entfernt wurde, verwende den gesamten Text als Tail
+                prompt_tail = current_prompt
+
             email_output.configure(state="normal")
             email_output.delete("1.0", tk.END)
             email_output.configure(state="disabled")
+
             use_llm = email_use_llm.get()
             debug = email_debug.get()
             generated = 0
+
             for cid in candidate_ids:
                 candidate = fetch_candidate_for_email(conn, cid)
                 if not candidate:
                     append_email_output(f"[{cid}] Kandidat nicht gefunden.")
                     continue
+
+                # Matching-Skill-Informationen für diesen Kandidaten anreichern (falls vorhanden)
+                match_row = None
+                for r in matching_state.get("results") or []:
+                    if r.get("id") == cid:
+                        match_row = r
+                        break
+                if match_row:
+                    if match_row.get("skills_gemeinsam"):
+                        candidate["skills_gemeinsam"] = match_row.get("skills_gemeinsam")
+                    if match_row.get("skills_fehlend"):
+                        candidate["skills_fehlend"] = match_row.get("skills_fehlend")
+
                 try:
                     if debug:
                         append_email_output(f"[DEBUG] job_id={job_id}, candidate_id={cid}")
                         append_email_output(f"[DEBUG] job_keys={', '.join(sorted(job.keys()))}")
                         append_email_output(f"[DEBUG] candidate_keys={', '.join(sorted(candidate.keys()))}")
+
                     if use_llm:
-                        betreff, mail = mail_generate_email_with_ollama(candidate, job)
+                        # Baue für jeden Kandidaten einen Prompt unter Verwendung des (ggf. angepassten) Tail-Blocks
+                        prompt = mail_build_email_prompt(candidate, job, tail_instructions=prompt_tail)
+                        betreff, mail = mail_generate_email_with_ollama_custom_prompt(prompt, job)
                         if not betreff or not mail:
                             betreff, mail = mail_generate_fallback_email(candidate, job)
                     else:
                         betreff, mail = mail_generate_fallback_email(candidate, job)
+
                     if not betreff or not mail:
                         append_email_output(f"[{cid}] Keine E-Mail generiert (leere Antwort).")
                         continue
+
                     append_email_output(
                         f"Kandidat {cid}: {candidate.get('first_name', '')} {candidate.get('last_name', '')}"
                     )
@@ -781,7 +1001,9 @@ def run_email_generation():
                     if debug:
                         append_email_output(traceback.format_exc())
                     append_email_output("-" * 80)
+
             email_status.configure(text=f"{generated} E-Mails generiert")
+            append_email_output("-" * 80)
         finally:
             conn.close()
     except Exception as exc:

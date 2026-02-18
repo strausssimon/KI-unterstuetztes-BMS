@@ -25,6 +25,7 @@ CSV_PATH = r"data\Staedte_Deutschland.csv"
 WEIGHT_SALARY = 0.7
 WEIGHT_DRIVE = 0.3
 MAX_SCORE_COMPONENTS = 2
+WEIGHT_SKILL = 0.3
 
 # --------------------------------------------------
 # KARRIEREL0GIK
@@ -62,18 +63,52 @@ def career_match(candidate_pos, job_pos):
 df_cities = pd.read_csv(CSV_PATH)
 df_cities["place"] = df_cities["place"].str.lower().str.strip()
 
+# Falls vorhanden: Bundesland-Spalte normalisieren
+if "state" in df_cities.columns:
+    df_cities["state"] = df_cities["state"].fillna("").str.lower().str.strip()
+else:
+    df_cities["state"] = ""
+
+# Kürzel/Synonyme für Deutschland, um Einträge wie "DE" oder "Germany"
+# im Wohn- oder Wunscharbeitsort auflösen zu können
+GERMANY_ALIASES = {"de", "deutschland", "ger", "germany"}
+
 def extract_city(text):
     if not text:
         return None
     return text.lower().split(",")[0].strip()
 
-def get_coords(city):
-    if not city:
+def get_coords(location):
+    """Ermittelt Koordinaten für Stadt, Bundesland oder Deutschland.
+
+    Logik:
+    - Zuerst wird versucht, den Ort als Stadt (place) zu finden.
+    - Falls nicht gefunden, wird geprüft, ob es ein Bundesland (state) ist;
+      in dem Fall wird der geometrische Schwerpunkt aller Städte dieses
+      Bundeslandes verwendet.
+    - Für Einträge wie "de"/"deutschland" wird der Schwerpunkt aller
+      Städte in der CSV genutzt.
+    """
+    if not location:
         return None, None
-    row = df_cities[df_cities["place"] == city]
-    if row.empty:
-        return None, None
-    return row.iloc[0]["latitude"], row.iloc[0]["longitude"]
+
+    loc = location.lower().strip()
+
+    # 1) Direkter Stadt-Treffer
+    row_city = df_cities[df_cities["place"] == loc]
+    if not row_city.empty:
+        return row_city.iloc[0]["latitude"], row_city.iloc[0]["longitude"]
+
+    # 2) Bundesland: Mittelwert aller zugehörigen Städte
+    row_state = df_cities[df_cities["state"] == loc]
+    if not row_state.empty:
+        return row_state["latitude"].mean(), row_state["longitude"].mean()
+
+    # 3) Deutschlandweit
+    if loc in GERMANY_ALIASES:
+        return df_cities["latitude"].mean(), df_cities["longitude"].mean()
+
+    return None, None
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371
@@ -90,7 +125,7 @@ def load_job(job_id):
     conn = psycopg.connect(**DB_CONFIG)
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, position, department, ort, gehalt_von, gehalt_bis
+        SELECT id, position, department, ort, gehalt_von, gehalt_bis, sonstiges_anforderungen
         FROM jobs WHERE id = %s
     """, (job_id,))
     row = cur.fetchone()
@@ -104,7 +139,7 @@ def load_job(job_id):
     conn.close()
 
     job = dict(zip(
-        ["id", "position", "department", "ort", "gehalt_von", "gehalt_bis"], row
+        ["id", "position", "department", "ort", "gehalt_von", "gehalt_bis", "sonstiges_anforderungen"], row
     ))
     
     # Debug-Ausgabe der geladenen Rohdaten
@@ -122,7 +157,7 @@ def load_candidates():
     cur = conn.cursor()
     cur.execute("""
         SELECT id, first_name, last_name, status, position_now, department,
-               gehaltswunsch, wohnort, wunscharbeitsort, regionale_verfuegbarkeit
+               gehaltswunsch, wohnort, wunscharbeitsort, regionale_verfuegbarkeit, skills
         FROM candidates
         WHERE status != 'not interested'
     """)
@@ -190,6 +225,37 @@ def fahrtweg_score(c, job_city):
 
     return score, round(best, 1)
 
+
+def _parse_skill_list(text):
+    """Hilfsfunktion: wandelt eine kommaseparierte Skill-Liste in ein Set um."""
+    if not text:
+        return set()
+    return {
+        part.strip().lower()
+        for part in str(text).split(",")
+        if part.strip()
+    }
+
+
+def skill_overlap(job_requirements, candidate_skills):
+    """Berechnet die Überlappung zwischen Job-Skills und Kandidaten-Skills.
+
+    Rückgabewert:
+        float in [0, 1]: Anteil der Job-Skills, die beim Kandidaten vorhanden sind.
+        0.0, wenn keine oder leere Listen.
+    """
+    req_set = _parse_skill_list(job_requirements)
+    cand_set = _parse_skill_list(candidate_skills)
+
+    if not req_set or not cand_set:
+        return 0.0
+
+    inter = req_set & cand_set
+    if not inter:
+        return 0.0
+
+    return len(inter) / len(req_set)
+
 # --------------------------------------------------
 # MATCHING
 # --------------------------------------------------
@@ -203,6 +269,64 @@ def match_candidates(job, candidates):
         fachbereiche = [f.strip() for f in (c.get("department") or "").split(",")]
         if job["department"] not in fachbereiche:
             continue
+
+        # Skill-Matching: Kandidaten mit passenden Skills werden höher bewertet.
+        # Kandidaten OHNE hinterlegte Skills werden nicht herausgefiltert,
+        # sondern nur ohne Skill-Score berücksichtigt.
+        skill_match_score = None
+        skill_score = None
+        skills_job = None
+        skills_kandidat = None
+        skills_gemeinsam = None
+        skills_fehlend = None
+
+        if job.get("sonstiges_anforderungen"):
+            job_reqs = job.get("sonstiges_anforderungen")
+            cand_skills = c.get("skills")
+
+            job_set = _parse_skill_list(job_reqs)
+            cand_set = _parse_skill_list(cand_skills)
+            
+            # Original-Schreibweise aus den Strings rekonstruieren
+            job_list = [p.strip() for p in str(job_reqs).split(",") if p.strip()]
+            cand_list = [p.strip() for p in str(cand_skills).split(",") if p.strip()] if cand_skills else []
+
+            job_map = {p.lower(): p for p in job_list}
+
+            skills_job = ", ".join(job_list) if job_list else None
+            skills_kandidat = ", ".join(cand_list) if cand_list else None
+
+            if cand_set:
+                # Berechne Schnittmenge und fehlende Skills (case-insensitiv)
+                inter_lower = job_set & cand_set
+                if not inter_lower:
+                    # Kandidat HAT Skills, aber kein einziger Skill überschneidet
+                    # sich mit den Anforderungen -> Kandidat überspringen
+                    continue
+
+                missing_lower = job_set - cand_set
+
+                skills_gemeinsam = ", ".join(
+                    sorted({job_map.get(s, s) for s in inter_lower})
+                ) if inter_lower else None
+                skills_fehlend = ", ".join(
+                    sorted({job_map.get(s, s) for s in missing_lower})
+                ) if missing_lower else None
+
+                # Overlap-Ratio und abgeleiteter Skill-Score (1-5)
+                skill_match_score = len(inter_lower) / len(job_set) if job_set else 0.0
+                # Mappe (0,1] auf [1,5]
+                skill_score = 1 + int(skill_match_score * 4) if skill_match_score > 0 else None
+            else:
+                # Keine Skills hinterlegt -> kein Skill-Filter, aber alle
+                # Job-Skills gelten als fehlend.
+                missing_lower = job_set
+                skills_gemeinsam = None
+                skills_fehlend = ", ".join(
+                    sorted({job_map.get(s, s) for s in missing_lower})
+                ) if missing_lower else None
+                skill_match_score = None
+                skill_score = None
 
         sal = salary_score(c.get("gehaltswunsch"), job["gehalt_von"], job["gehalt_bis"])
         drv, dist = fahrtweg_score(c, job["ort"])
@@ -219,6 +343,9 @@ def match_candidates(job, candidates):
             summe += drv * WEIGHT_DRIVE
             gewicht += WEIGHT_DRIVE
             comps += 1
+        if skill_score is not None:
+            summe += skill_score * WEIGHT_SKILL
+            gewicht += WEIGHT_SKILL
 
         avg = round(summe / gewicht, 2) if gewicht else None
         voll = comps / MAX_SCORE_COMPONENTS
@@ -231,12 +358,17 @@ def match_candidates(job, candidates):
             "id": c["id"],
             "name": f"{c.get('first_name')} {c.get('last_name')}",
             "position_now": c.get("position_now"),
-            "department": c.get("department"),
             "gehaltswunsch": c.get("gehaltswunsch"),
             "gehalts_score": sal,
             "fahrtweg_score": drv,
             "fahrtweg_km": dist,
             "gesamt_score": avg,
+            "skill_match": skill_match_score,
+            "skill_score": skill_score,
+            "skills_job": skills_job,
+            "skills_kandidat": skills_kandidat if skills_kandidat is not None else c.get("skills"),
+            "skills_gemeinsam": skills_gemeinsam,
+            "skills_fehlend": skills_fehlend,
             "datenvollstaendigkeit": voll,
             "fehlende_daten": fehlend
         })
@@ -289,7 +421,7 @@ def export_to_excel(job, candidates_data, results, output_dir=RESULTS_DIR):
         SELECT id, first_name, last_name, e_mail, tel, position_now, 
                department, gehaltswunsch, wohnort, wunscharbeitsort, 
                regionale_verfuegbarkeit, status, qualification, 
-               next_career_step, short_note
+               next_career_step, short_note, skills
         FROM candidates
         WHERE id IN ({placeholders});
     """, candidate_ids)
@@ -325,6 +457,10 @@ def export_to_excel(job, candidates_data, results, output_dir=RESULTS_DIR):
             'gehalts_score': r['gehalts_score'],
             'fahrtweg_score': r['fahrtweg_score'],
             'fahrtweg_km': r['fahrtweg_km'],
+            'skill_match': r.get('skill_match'),
+            'skill_score': r.get('skill_score'),
+            'skills_gemeinsam': r.get('skills_gemeinsam'),
+            'skills_fehlend': r.get('skills_fehlend'),
             'datenvollstaendigkeit': f"{int(r['datenvollstaendigkeit']*100)}%",
             'fehlende_daten': ', '.join(r['fehlende_daten']) if r['fehlende_daten'] else 'Keine'
         })
@@ -385,6 +521,9 @@ if __name__ == "__main__":
             print(f"   Gehaltswunsch: {r['gehaltswunsch']}")
             print(f"   Scores: Gehalt {r['gehalts_score']} | Fahrtweg {r['fahrtweg_score']} ({r['fahrtweg_km']} km)")
             print(f"   Gesamt-Score: {r['gesamt_score']} ({int(r['datenvollstaendigkeit']*2)}/2 Kriterien)")
+            if r.get("skill_match") is not None:
+                print(f"   Übereinstimmende Skills: {r.get('skills_gemeinsam') or '(keine)'}")
+                print(f"   Fehlende Job-Skills: {r.get('skills_fehlend') or '(keine)'}")
             if r["fehlende_daten"]:
                 print(f"   ⚠️ Fehlende Daten: {', '.join(r['fehlende_daten'])}")
             print()

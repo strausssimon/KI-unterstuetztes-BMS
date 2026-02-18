@@ -57,56 +57,64 @@ class CandidateExtract(BaseModel):
 # --------------------------------------------------
 def build_prompt(text: str) -> str:
     return f"""
-Du bist ein spezialisiertes Extraktionssystem für medizinische Recruiting-Daten.
+Du bist ein spezialisiertes Extraktionssystem fuer medizinische Recruiting-Daten.
 Deine Aufgabe ist es, strukturierte Felder aus Freitext zu extrahieren.
-❗ Antworte AUSSCHLIESSLICH mit gültigem JSON. ❗
-KEIN Text, KEINE Erklärungen außerhalb des JSON.
-❗ Alle Felder müssen einfache Strings oder null sein (keine Objekte, keine Arrays).
+Antworte AUSSCHLIESSLICH mit gueltigem JSON.
+KEIN Text, KEINE Erklaerungen ausserhalb des JSON.
+Alle Felder muessen einfache Strings oder null sein (keine Objekte, keine Arrays).
+
+WICHTIGE REGELN GEGEN HALLUZINATIONEN
+- Nutze NUR Informationen, die explizit im TEXT stehen.
+- Keine Vermutungen, kein Weltwissen, keine Ergaenzungen.
+- Wenn ein Feld nicht eindeutig und direkt im TEXT belegt ist -> null.
+- Jede nicht-null Angabe muss im TEXT belegbar sein.
+- Fuer short_note gilt: nur belegbare Zusatzinfos aus dem TEXT, keine neuen Fakten.
+- Wenn nichts zusaetzlich belegbares vorhanden ist -> short_note = null.
 
 --------------------------------------------------
 FELDER & REGELN
 --------------------------------------------------
-1) first_name - Vorname der Person - Beispiel: "Anna" - Wenn unklar oder nicht vorhanden → null
-2) last_name - Nachname der Person - Beispiel: "Müller" - Wenn unklar oder nicht vorhanden → null
-3) status - Gibt an, ob die Person aktuell offen für neue Stellen ist
+1) first_name - Vorname der Person - Beispiel: "Anna" - Wenn unklar oder nicht vorhanden -> null
+2) last_name - Nachname der Person - Beispiel: "Mueller" - Wenn unklar oder nicht vorhanden -> null
+3) status - Gibt an, ob die Person aktuell offen fuer neue Stellen ist
    ERLAUBTE WERTE:
-   - "interested" → aktiv suchend, offen für Angebote, wechselbereit
-   - "not interested" → kein Wechselinteresse
-   - Wenn kein klares Signal vorhanden → null
-4) wohnort - Aktueller Wohn- oder Arbeitsort (Stadt) - Beispiel: "Köln" - KEINE Regionen, KEINE Länder - Wenn nicht eindeutig → null
-5) wunscharbeitsort - Bevorzugte Region oder Stadt für eine neue Stelle
+   - "interested" -> aktiv suchend, offen fuer Angebote, wechselbereit
+   - "not interested" -> kein Wechselinteresse
+   - Wenn kein klares Signal vorhanden -> null
+4) wohnort - Aktueller Wohn- oder Arbeitsort (Stadt) - Beispiel: "Koeln" - KEINE Regionen, KEINE Laender - Wenn nicht eindeutig -> null
+5) wunscharbeitsort - Bevorzugte Region oder Stadt fuer eine neue Stelle
    Beispiele:
    - "NRW"
    - "Bayern"
-   - "München"
-   - Wenn keine Präferenz genannt → null
-6) regionale_verfuegbarkeit - Maximaler Fahrtweg in Kilometern(km)
-   Beispiele:
-   - "50"
-   - "80"
-   - Wenn keine Angabe → null
+   - "Muenchen"
+   - Wenn keine Praeferenz genannt -> null
+6) regionale_verfuegbarkeit - Dieses Feld entspricht dem Arbeitsweg, also der täglichen Pendelbereitschaft in km (Kilometern). Trage nur die Zahl ein, ohne "km" oder andere Einheiten. Wenn keine klare Angabe zur Pendelbereitschaft gemacht wird, trage null ein.
 7) position_now - Aktuelle berufliche Position - MUSS GENAU einer der folgenden Werte sein (kleingeschrieben): {POSITIONEN}
    Synonyme bitte korrekt zuordnen:
-   - "Oberärztin" → "oberarzt"
-   - "Leitender OA" → "leitender oberarzt"
-   - Wenn keine eindeutige Zuordnung möglich → null
+   - "Oberaerztin" -> "oberarzt"
+   - "Leitender OA" -> "leitender oberarzt"
+   - Wenn keine eindeutige Zuordnung moeglich -> null
 8) department - Medizinischer Fachbereich - MUSS GENAU einer der folgenden Werte sein (kleingeschrieben): {FACHAUSWAHL}
    Beispiele:
-   - "Radiologie" → "radiologie"
-   - "Schwerpunkt Neuroradiologie" → "neuroradiologie"
-   - Wenn kein eindeutiger Match → null
-9) short_note - Alle relevanten Informationen, die NICHT eindeutig einem Feld zugeordnet werden können
+   - "Radiologie" -> "radiologie"
+   - "Schwerpunkt Neuroradiologie" -> "neuroradiologie"
+   - Wenn kein eindeutiger Match -> null
+9) short_note - Alle relevanten Informationen, die NICHT eindeutig einem Feld zugeordnet werden koennen
    Beispiele:
-   - Schwerpunkte
-   - Motivation
-   - Zusatzqualifikationen
    - KEINE Wiederholung der anderen Felder
+   - NUR belegbare Inhalte aus dem TEXT
+   - Bei Unsicherheit -> null
+
+SELBSTCHECK VOR AUSGABE
+1) Ist jeder nicht-null Wert im TEXT belegbar?
+2) Falls nein: setze das betreffende Feld auf null.
 
 --------------------------------------------------
-TEXT:
+Ordne ausschließlich folgende Infos den Feldern zu:
 \"\"\"{text}\"\"\"
 JSON:
 """
+
 
 # --------------------------------------------------
 # NORMALISIERUNG / ABSICHERUNG
@@ -150,6 +158,8 @@ def normalize_llm_output(data: dict) -> dict:
         if "region" in rv:
             parts.append(rv["region"])
         out["regionale_verfuegbarkeit"] = ", ".join(parts) if parts else None
+    elif isinstance(rv, int) and not isinstance(rv, bool):
+        out["regionale_verfuegbarkeit"] = str(rv)
     elif isinstance(rv, str):
         out["regionale_verfuegbarkeit"] = rv
     else:

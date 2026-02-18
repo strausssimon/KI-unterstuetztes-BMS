@@ -104,18 +104,6 @@ def similarity(a, b):
 def tokenize(text):
     return re.findall(r"\b\w+\b", text.lower())
 
-def requirement_score(requirements, long_note):
-    if not requirements:
-        return 0.0
-    req_terms = tokenize(requirements)
-    if not req_terms:
-        return 0.0
-    note_terms = set(tokenize(long_note or ""))
-    if not note_terms:
-        return 0.0
-    hits = sum(1 for t in req_terms if t in note_terms)
-    return hits / len(req_terms)
-
 def best_fuzzy_match(terms, candidates):
     best_candidate = None
     best_score = 0.0
@@ -331,6 +319,17 @@ def load_candidates():
         for field in ["position_now", "department", "wohnort", "wunscharbeitsort"]:
             if k.get(field) and isinstance(k.get(field), str):
                 k[field] = k[field].lower()
+
+        # Regionale Verfügbarkeit wie in Matching.py interpretieren
+        rv_raw = k.get("regionale_verfuegbarkeit")
+        rv = str(rv_raw).lower().strip() if rv_raw is not None else ""
+        if "deutschland" in rv:
+            # deutschlandweit verfügbar -> sehr großer Radius
+            k["regionale_verfuegbarkeit"] = 1000
+        else:
+            nums = re.findall(r"\d+", rv)
+            k["regionale_verfuegbarkeit"] = int(nums[0]) if nums else 50
+
         kandidaten_liste.append(k)
     
     print(f"✓ {len(kandidaten_liste)} Kandidaten geladen")
@@ -351,8 +350,6 @@ def match_candidates(intent, kandidaten_liste):
     ziel_fach = intent.get("fachbereich")
     ziel_state = intent.get("state")
     ziel_land = intent.get("land")
-    sonstige_anforderungen = intent.get("sonstige_anforderungen")
-    has_core_filters = any([ziel_position, ziel_fach, ziel_state, ziel_land, intent.get("ort")])
 
     # Wenn eine Stadt im Intent steht, nutze deren Bundesland als Standard-
     # Gebiet ("größtes Gebiet" = Bundesland der Zielstadt).
@@ -369,15 +366,23 @@ def match_candidates(intent, kandidaten_liste):
 
     for k in kandidaten_liste:
         # Fachbereich-Check (candidates hat 'department' statt 'fachbereich')
-        if ziel_fach and k.get("department") != ziel_fach:
-            continue
-        
-        # Position-Check (candidates hat 'position_now' statt 'position')
-        if ziel_position:
-            aktuelle_position = k.get("position_now", "")
-            erlaubte = KARRIERE_PFADE.get(aktuelle_position, set())
-            if ziel_position not in erlaubte:
+        # Skills / Fachbereich sind NICHT mandatory: Wenn beim Kandidaten
+        # kein Fachbereich hinterlegt ist, wird er nicht ausgeschlossen.
+        if ziel_fach:
+            department = k.get("department")
+            if department and department != ziel_fach:
                 continue
+
+        # Position-Check (candidates hat 'position_now' statt 'position')
+        # Auch die aktuelle Position ist optional: Nur wenn eine
+        # Position beim Kandidaten hinterlegt ist, wird der Karrierpfad
+        # zur Filterung verwendet.
+        if ziel_position:
+            aktuelle_position = k.get("position_now") or ""
+            if aktuelle_position:
+                erlaubte = KARRIERE_PFADE.get(aktuelle_position, set())
+                if ziel_position not in erlaubte:
+                    continue
 
         # Wohnort aus CSV (ggf. mit Komma, z.B. "mannheim, baden-württemberg")
         wohnort = k.get("wohnort", "")
@@ -402,54 +407,66 @@ def match_candidates(intent, kandidaten_liste):
         else:
             w_lat = w_lon = w_state = None
 
-        # Bundesland filtern
-        if ziel_state:
-            if wohn_state != ziel_state and w_state != ziel_state:
-                continue
-
-        # Land-Prüfung: Wenn Land gesucht wird, prüfe ob im Wunscharbeitsort
-        # ein Länder-Token vorkommt (z.B. "schweiz", "ch", "switzerland").
-        if ziel_land:
-            tokens = tokenize(wunsch) if wunsch else []
-            kandidat_land = None
-            for tok in tokens:
-                land = LAND_LOOKUP.get(tok)
-                if land:
-                    kandidat_land = land
-                    break
-            # Wenn ein Land gesucht wird, aber im Wunscharbeitsort kein passendes
-            # Land erkannt wurde, Kandidat überspringen.
-            if kandidat_land != ziel_land:
-                continue
-
-        # Entfernung prüfen (nutze 'regionale_verfuegbarkeit' wie in intelligente_Suchabfrage.py)
+        # Entfernung zuerst prüfen: alle Kandidaten mit Entfernung <= 50 km
+        # (zwischen Such-Ort und Wohn- bzw. Wunscharbeitsort) werden angezeigt.
+        min_dist = None
         if ziel_lat is not None and ziel_lon is not None:
-            max_km = k.get("regionale_verfuegbarkeit") or 50
-
-            # Entfernungen zu Wohn- und Wunscharbeitsort berechnen
             dist_wohn = haversine(ziel_lat, ziel_lon, wohn_lat, wohn_lon) if wohn_lat else float("inf")
             dist_wunsch = haversine(ziel_lat, ziel_lon, w_lat, w_lon) if w_lat else float("inf")
 
-            # Wie im Basisskript: Minimum der beiden Distanzen verwenden
             min_dist = min(dist_wohn, dist_wunsch)
             if min_dist == float("inf"):
                 min_dist = None
 
-            # Filter nach maximaler Entfernung
-            if min_dist is not None and min_dist > max_km:
-                continue
-        else:
-            min_dist = None
+            if min_dist is not None and min_dist <= 50:
+                # passt über Entfernung -> Kandidat bleibt erhalten
+                pass
+            else:
+                # keine oder zu große Entfernung -> Fallback auf Bundesland/Land
+                # 1) Wenn Bundesland bekannt: Kandidaten mit Wohn- oder Wunscharbeitsort
+                #    im selben Bundesland behalten.
+                same_state = False
+                if ziel_state:
+                    if wohn_state and wohn_state == ziel_state:
+                        same_state = True
+                    if w_state and w_state == ziel_state:
+                        same_state = True
+
+                # 2) Wenn (noch) kein Treffer über Bundesland und ein Land
+                #    im Intent existiert, zusätzlich Kandidaten berücksichtigen,
+                #    deren Wunscharbeitsort im selben Land liegt (z.B. "de").
+                tokens_wunsch = tokenize(wunsch) if wunsch else []
+
+                same_country = False
+                if not same_state and ziel_land and tokens_wunsch:
+                    for tok in tokens_wunsch:
+                        land = LAND_LOOKUP.get(tok)
+                        if land == ziel_land:
+                            same_country = True
+                            break
+
+                # 3) Spezieller Fall: Wunscharbeitsort ist deutschlandweit
+                #    (z.B. nur "de" oder "deutschland"). Diese Kandidaten
+                #    sollen immer berücksichtigt werden, auch wenn im Intent
+                #    kein Land explizit genannt wurde.
+                deutschlandweit = False
+                if tokens_wunsch:
+                    for tok in tokens_wunsch:
+                        land = LAND_LOOKUP.get(tok)
+                        if land == "deutschland":
+                            deutschlandweit = True
+                            break
+
+                if not same_state and not same_country and not deutschlandweit:
+                    # weder Entfernung <= 50 km, noch gleiches Bundesland,
+                    # noch explizit gleiches Land, noch deutschlandweit -> Kandidat überspringen
+                    continue
 
         # Kompakte Ausgabe
         wohn_info = f"{wohnort} / {wohn_state}" if wohn_state else wohnort
         wunsch_info = f"{wunsch} / {w_state}" if w_state else wunsch
 
         passende_roh.append(k)
-        sonstige_score = requirement_score(sonstige_anforderungen, k.get("long_note"))
-        if sonstige_anforderungen and not has_core_filters and sonstige_score == 0.0:
-            passende_roh.pop()
-            continue
         passende.append({
             "kandidat_id": k["id"],
             "name": f"{k.get('first_name', '')} {k.get('last_name', '')}".strip(),
@@ -457,15 +474,10 @@ def match_candidates(intent, kandidaten_liste):
             "fachbereich": k.get("department", "N/A"),
             "wohnort": wohn_info,
             "wunscharbeitsort": wunsch_info,
-            "entfernung_km": round(min_dist, 2) if min_dist is not None else None,
-            "sonstige_score": sonstige_score,
-            "long_note": k.get("long_note"),
+            "entfernung_km": round(min_dist, 2) if min_dist is not None else None
         })
 
-    passende.sort(key=lambda x: (
-        -x.get("sonstige_score", 0.0),
-        x["entfernung_km"] if x["entfernung_km"] is not None else float('inf'),
-    ))
+    passende.sort(key=lambda x: x["entfernung_km"] if x["entfernung_km"] is not None else float('inf'))
     return passende, passende_roh
 
 
