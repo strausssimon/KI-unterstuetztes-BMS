@@ -7,7 +7,7 @@ from pydantic import BaseModel, ValidationError
 # OLLAMA CONFIG
 # --------------------------------------------------
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama2"
+MODEL = "llama2:latest"
 
 # --------------------------------------------------
 # ERLAUBTE WERTE
