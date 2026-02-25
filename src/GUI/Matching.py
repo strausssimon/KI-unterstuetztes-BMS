@@ -358,6 +358,7 @@ def match_candidates(job, candidates):
             "id": c["id"],
             "name": f"{c.get('first_name')} {c.get('last_name')}",
             "position_now": c.get("position_now"),
+            "department": c.get("department"),
             "gehaltswunsch": c.get("gehaltswunsch"),
             "gehalts_score": sal,
             "fahrtweg_score": drv,
