@@ -1,4 +1,11 @@
-"""Füge minicrm_id Spalte zur jobs-Tabelle hinzu"""
+""" 
+====================================================
+Programmname : KI-unterstütztes BMS - minicrm_id Spalte hinzufügen
+Beschreibung : Fügt die minicrm_id Spalte zur jobs-Tabelle hinzu
+
+====================================================
+"""
+
 import psycopg
 from src.db_config import DB_CONFIG
 

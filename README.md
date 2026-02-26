@@ -2,111 +2,115 @@
 
 ## Projektübersicht
 
-Dieses Repository enthält ein modulares System zur intelligenten Verarbeitung, Analyse und Verwaltung von Bewerberdaten mittels künstlicher Intelligenz. Die Lösung kombiniert moderne NLP-Technologien (Natural Language Processing), Vektor-Embeddings und Large Language Models (LLMs) mit einer leistungsfähigen PostgreSQL-Datenbank inkl. pgvector-Erweiterung. Das Projekt richtet sich an Recruiter, Personalverantwortliche und Entwickler aus den Bereichen HR-Tech, maschinelles Lernen und intelligente Datenverarbeitung.
+Dieses Repository enthält ein modulares System zur intelligenten Verarbeitung, Analyse und Verwaltung von Bewerberdaten mittels künstlicher Intelligenz. Die Lösung kombiniert eine GUI mit lokalen Language Models (Ollama), PostgreSQL und regelbasierter Matching-Logik.
+Das Projekt richtet sich an Recruiter und Personalverantwortliche im Gesundheitswesen.
+
 
 ---
 
 ## Hauptfunktionen
 
-- **Intelligente Bewerberdatenverarbeitung:**  
-  Automatisches Extrahieren von Qualifikationen, Skills und Erfahrungen aus Lebensläufen (PDFs) mittels LLM-gestützter Analyse.
+- **GUI (Hauptanwendung):**
+  Zentrale Oberfläche zur Verwaltung von Kandidaten und Stellen, inkl. Matching,
+  intelligenter Suche, LM-Datenimport und Mailgenerierung.
 
-- **Skill-Matching mit ESCO-Datenbank:**  
-  Semantischer Abgleich von Bewerber-Skills mit der europäischen ESCO-Klassifikation (European Skills, Competences, Qualifications and Occupations) zur standardisierten Kompetenzerfassung.
+- **Job-Kandidaten-Matching:**
+  Automatischer Abgleich von Stellen und Bewerbern anhand von Karrierepfad, Fachbereich sowie Scoring (Gehalt, Fahrtweg, Skills).
 
-- **Vektor-basierte Ähnlichkeitssuche:**  
-  Nutzung von Sentence Embeddings und pgvector für semantische Suche nach passenden Kandidaten basierend auf Stellenanforderungen.
+- **Intelligente Suchabfrage:**
+  Natürlichsprachige Suchanfragen werden per Ollama-LLM interpretiert und in strukturierte Datenbankabfragen umgewandelt.
 
-- **LLM-Integration:**  
-  Anbindung lokaler LLMs (via Ollama) für natürlichsprachliche Datenbankabfragen und intelligente Kandidatenempfehlungen.
+- **Strukturierter Datenimport (LLM):**
+  Freitext (z. B. aus Mails oder CRM-Exporten) wird per Ollama zu strukturierten JSON-Objekten verarbeitet, per Pydantic validiert und in die DB importiert.
 
-- **Docker-basierte Infrastruktur:**  
-  Vollständig containerisiertes Setup mit PostgreSQL (pgvector) und pgAdmin4 für einfaches Deployment und Wartung.
+- **Skill-Extraktion:**
+  Automatisches Erkennen von Skills aus Lebensläufen (PDF) und Kurznotizen, Abgleich mit einer hinterlegten Skills-Datenbank (Fuzzy-Matching).
+
+- **Mailgenerierung:**
+  Personalisierte Kandidaten-Anschreiben auf Basis von Vorlagen und DB-Daten.
+
+- **Docker-basierte Datenbankinfrastruktur:**
+  PostgreSQL mit pgvector-Extension, verwaltet über Docker Compose.
 
 ---
 
 ## Projektstruktur
 
-```plaintext
+```
 KI-unterstuetztes-BMS/
-├── data/                               # Rohdaten und aufbereitete Datensätze
-│   ├── Staedte_Deutschland.csv         # Deutsche Städte für Ortsabgleich
-│   ├── db/                             # Datenbank-Exports
-│   │   ├── leaddelta/                  # Lead-Daten
-│   │   └── miniCRM/                    # CRM-Exporte
-│   └── skills_de/                      # ESCO-Datenbank (deutsch)
-│       ├── broaderRelationsOccPillar_de.csv
-│       ├── broaderRelationsSkillPillar_de.csv
-│       ├── digCompSkillsCollection_de.csv
-│       ├── digitalSkillsCollection_de.csv
-│       ├── greenSkillsCollection_de.csv
-│       ├── ISCOGroups_de.csv
-│       ├── languageSkillsCollection_de.csv
-│       ├── occupations_de.csv
-│       ├── occupationSkillRelations_de.csv
-│       ├── researchOccupationsCollection_de.csv
-│       ├── researchSkillsCollection_de.csv
-│       ├── skillGroups_de.csv
-│       ├── skills_de.csv
-│       ├── skillsHierarchy_de.csv
-│       ├── skillSkillRelations_de.csv
-│       └── transversalSkillsCollection_de.csv
+├── data/
+│   ├── skills.csv                          # Interne Skills-Referenzdatenbank
+│   ├── Staedte_Deutschland.csv             # Deutsche Städte für Ortsabgleich
+│   └── db/
+│       ├── backup_postresql/               # CSV-Backups (Kandidaten & Jobs)
+│       ├── CV/                             # Lebenslauf-PDFs
+│       ├── leaddelta/                      # LeadDelta-Kontaktexporte
+│       ├── mails/                          # Mail-Vorlagen
+│       └── miniCRM/                        # CRM-Exportdaten
 │
-├── init-scripts/                       # PostgreSQL Initialisierungsskripte
-│   ├── 01-init-pgvector.sql           # pgvector Extension Setup
-│   └── README-Setup.md                 # Setup-Dokumentation
+├── init-scripts/
+│   ├── 01-init-pgvector.sql               # pgvector Extension Setup
+│   └── README-Setup.md
 │
-├── models/                             # KI-Modelle und Kernlogik
-│   ├── Datenbank_LLM_Abfrage.py       # LLM-gestützte Datenbankabfragen
-│   ├── load_medical_professions.py     # Laden medizinischer Berufe
-│   ├── search_medical_professions.py   # Suche nach medizinischen Fachkräften
-│   ├── skill_matching.py              # Skill-Matching mit ESCO
-│   ├── skills_de.csv                  # ESCO Skills (kompakt)
-│   └── extract_skills/                # CV-Analyse Module
-│       ├── read_cv_llm.py             # LLM-basierte CV-Extraktion
-│       └── read_cv_skills_cos_indx.py # Cosinus-Ähnlichkeit für Skills
+├── models/
+│   └── extract_skills/
+│       ├── read_cv_llm.py                 # LLM-basierte CV-Analyse
+│       └── read_cv_skills_cos_indx.py     # Cosinus-Ähnlichkeit für Skills
 │
-├── pgvector/                           # pgvector Demonstrations-Dateien
+├── results/                               # Analyse-Ergebnisse und Reports
 │
-├── results/                            # Evaluierungsergebnisse und Logs
-│
-├── src/                                # Hauptmodule und Kernlogik
-│   ├── gui/                            # Grafische Benutzeroberfläche
+├── src/
+│   ├── db_config.py                       # Zentrale DB-Verbindungskonfiguration
 │   │
-│   ├── helpers/                        # Hilfsfunktionen und Utilities
-│   │   ├── create_sample_parquet.py   # Parquet-Testdaten erstellen
-│   │   └── ollama_test.py             # Ollama-Verbindungstest
+│   ├── GUI/                               # Hauptanwendung (Tkinter)
+│   │   ├── GUI_5.py                       # Haupteinstieg: Tkinter-GUI
+│   │   ├── intelligente_Suchabfrage_7.py  # NLP-Suche via Ollama
+│   │   ├── Matching.py                    # Job-Kandidaten-Matching + Excel-Export
+│   │   ├── Strukturierter_Datenimport_LLM.py  # Freitext → DB via Ollama & Pydantic
+│   │   └── mail_candidate.py              # Mailgenerierung (GUI-Modul)
 │   │
-│   ├── nlp/                            # NLP-Processing Module
+│   ├── helpers/
+│   │   ├── explorative_analyse_datenquellen.py
+│   │   ├── leaddelta_create_dataset.py
+│   │   └── ollama_test.py                 # Ollama-Verbindungstest
 │   │
-│   ├── PostreSQL/                      # Datenbank-Operationen
-│   │   ├── DB_LLM_abfrage.py          # LLM-Datenbankintegration
-│   │   ├── intelligente_Suchabfrage.py # Intelligente Kandidatensuche
-│   │   │
-│   │   ├── Aufbau/                     # Datenbank-Schema-Management
-│   │   │   ├── check_and_fix_constraints.py # Constraint-Validierung
-│   │   │   ├── new_table_candidates.py      # Kandidaten-Tabelle
-│   │   │   ├── new_table_jobs.py            # Jobs-Tabelle
-│   │   │   ├── new_table.py                 # Generisches Tabellen-Setup
-│   │   │   ├── test_pgvector.py             # pgvector Funktionstests
-│   │   │   └── update_short_note_length.py  # Schema-Updates
-│   │   │
-│   │   └── import/                     # Datenimport-Skripte
-│   │       ├── miniCRM_import.py       # CRM-Datenimport
-│   │       └── wunscharbeitsort.py     # Wunscharbeitsort-Verarbeitung
+│   ├── mailing/
+│   │   ├── generate_personalized_mails.py
+│   │   └── mail_candidate.py
 │   │
-│   └── vector/                         # Vektor-Embeddings
-│       └── embedding.py                # Embedding-Generierung
+│   └── PostreSQL/
+│       ├── backup_candidates_to_csv.py    # Kandidaten-Backup nach CSV
+│       ├── backup_jobs_to_csv.py          # Jobs-Backup nach CSV
+│       │
+│       ├── Aufbau/                        # Schema-Setup & Migrations-Skripte
+│       │   ├── new_table_candidates.py
+│       │   ├── new_table_jobs.py
+│       │   ├── add_skills_column.py
+│       │   ├── add_cv_pdf_column.py
+│       │   ├── add_missing_columns.py
+│       │   ├── add_minicrm_id_column.py
+│       │   └── check_and_fix_constraints.py
+│       │
+│       └── import/                        # Datenimport-Skripte
+│           ├── miniCRM_import_candidates.py
+│           ├── miniCRM_import_jobs.py
+│           ├── import_single_cv_pdf.py
+│           ├── extract_skills_from_cv_pdf.py
+│           ├── extract_skills_from_long_note.py
+│           ├── job_skills_extraktion.py
+│           ├── job_gehalt_extraktion.py
+│           ├── job_ort_extraktion.py
+│           ├── fill_salary.py
+│           └── wunscharbeitsort.py
 │
-├── check_mapping.py                    # Mapping-Validierung
-├── docker-compose.yml                  # Docker Service Definition
-├── DOCKER-SETUP.md                     # Docker Setup-Anleitung
-├── docker-start.bat                    # Windows: Container starten
-├── docker-stop.bat                     # Windows: Container stoppen
-├── install_pgvector.bat                # pgvector Installation (Windows)
-├── pgvector-demo.sql                   # pgvector Beispielabfragen
-├── README.md                           # Dieses Dokument
-└── requirements.txt                    # Python-Abhängigkeiten
+├── docker-compose.yml
+├── DOCKER-SETUP.md
+├── docker-start.bat                       # Windows: Container starten
+├── docker-stop.bat                        # Windows: Container stoppen
+├── install_pgvector.bat
+├── pgvector-demo.sql
+├── README.md
+└── requirements.txt
 ```
 
 ---
@@ -163,84 +167,54 @@ pip install -r requirements.txt
 - **Download:** [Ollama herunterladen](https://ollama.ai/)
 - Modell laden:
 ```bash
-ollama pull llama2
 ollama pull phi3:mini
+ollama pull llama3.2:3b
+ollama pull mistral:7b
 ```
 
----
+### 6. Datenbank-Schema initialisieren
 
-## Zugriff auf die Dienste
-
-### PostgreSQL-Datenbank
-- **Host:** localhost
-- **Port:** 5432
-- **Datenbank:** postgres
-- **Benutzer:** postgres
-- **Passwort:** bigdataconsulting
-
-### pgAdmin4 (Web-Interface)
-- **URL:** http://localhost:5050
-- **Email:** admin@admin.com
-- **Passwort:** admin
-
-### Ollama (LLM-API)
-- **URL:** http://localhost:11434
+```bash
+python src/PostreSQL/Aufbau/new_table_candidates.py
+python src/PostreSQL/Aufbau/new_table_jobs.py
+```
 
 ---
 
 ## Nutzung
 
-### Skill-Matching durchführen
+### Matching (`src/GUI/Matching.py`)
+Vergleicht Kandidaten mit einer Stelle anhand von:
+- Karrierepfad und Fachbereich
+- Gehaltswunsch vs. angebotenem Gehalt (Score)
+- Fahrtweg (Wunscharbeitsort)
+- Skills (Fuzzy-Matching)
 
-Analysiert Bewerber-Skills und gleicht sie mit der ESCO-Datenbank ab:
 
-```bash
-python models/skill_matching.py
-```
+### Intelligente Suchabfrage (`src/GUI/intelligente_Suchabfrage_7.py`)
+Parst eine natürlichsprachige Eingabe per Ollama-LLM, extrahiert Suchintentionen
+(Beruf, Ort, Verfügbarkeit etc.) und sucht passende Kandidaten in der Datenbank.
 
-### Lebenslauf mit LLM analysieren
+### Strukturierter Datenimport LLM (`src/GUI/Strukturierter_Datenimport_LLM.py`)
+Extrahiert aus Freitext (Mail, Notiz) ein strukturiertes Kandidaten-JSON per Ollama,
+validiert es mit Pydantic-Modellen und bereitet es für den DB-Import vor.
 
-Extrahiert strukturierte Informationen aus PDF-Lebensläufen:
-
-```bash
-python models/extract_skills/read_cv_llm.py
-```
-
-### Intelligente Kandidatensuche
-
-Führt semantische Suche nach passenden Kandidaten durch:
-
-```bash
-python src/PostreSQL/intelligente_Suchabfrage.py
-```
-
-### LLM-Datenbankabfrage
-
-Natürlichsprachliche Abfragen auf der Bewerberdatenbank:
-
-```bash
-python models/Datenbank_LLM_Abfrage.py
-```
-
-### pgvector-Funktionalität testen
-
-```bash
-python src/PostreSQL/Aufbau/test_pgvector.py
-```
+### Gehaltsdaten
+- `job_gehalt_extraktion.py`: Regex-Extraktion aus Jobtexten → `gehalt_von`/`gehalt_bis` in `jobs`
+- `fill_salary.py`: Schätzung aus Position/Fachbereich/Land → `gehaltswunsch` in `candidates`
 
 ---
 
-## Datenbank-Setup
-
-### Tabellen initialisieren
+## Daten-Backups
 
 ```bash
-# Kandidaten-Tabelle
-python src/PostreSQL/Aufbau/new_table_candidates.py
-
-# Jobs-Tabelle
-python src/PostreSQL/Aufbau/new_table_jobs.py
+python src/PostreSQL/backup_candidates_to_csv.py
+python src/PostreSQL/backup_jobs_to_csv.py
 ```
+
+Backups werden in `data/db/backup_postresql/` gespeichert.
+
+---
 
 ### Daten importieren
 
@@ -261,25 +235,15 @@ psql -U postgres -d postgres -f init-scripts/01-init-pgvector.sql
 
 ## Technologie-Stack
 
+- **GUI:** TKinter
 - **Datenbank:** PostgreSQL 18 mit pgvector-Extension
 - **Embeddings:** sentence-transformers (all-mpnet-base-v2)
-- **LLM:** Ollama (llama2, phi3:mini)
-- **NLP:** NLTK, scikit-learn
-- **PDF-Processing:** pdfplumber, PyPDF2, pytesseract
+- **LM:** Ollama (phi3:mini, llama3.2:3b, mistral:7b)
+- **Datenvalidierung** Pydantic v2 
+- **NLP/ Matching:** fuzzywuzzy, python-Levenshtein
+- **PDF-Processing:** pdfplumber, pdf2image, PyPDF2, pytesseract
 - **Container:** Docker, Docker Compose
-- **Python:** pandas, numpy, requests
-
----
-
-## ESCO-Datenbank
-
-Das System nutzt die [ESCO-Klassifikation](https://esco.ec.europa.eu/) (European Skills, Competences, Qualifications and Occupations) für standardisierte Skill-Erfassung. Die deutschen ESCO-Daten befinden sich im Verzeichnis `data/skills_de/`.
-
-### Enthaltene ESCO-Datasets:
-- Skills und Skill-Hierarchien
-- Berufsgruppen (ISCO)
-- Skill-Beruf-Relationen
-- Spezialisierte Collections (Digital, Green, Transversal Skills)
+- **Datenanalyse** pandas, numpy, scikit-learn, pyarrow
 
 ---
 
@@ -321,12 +285,6 @@ netstat -ano | findstr :5432
 taskkill /PID <PID> /F
 ```
 
-### pgvector nicht verfügbar
-```bash
-# Extension manuell aktivieren
-docker exec -it postgres_pgvector psql -U postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
-```
-
 ### Ollama nicht erreichbar
 ```bash
 # Ollama-Status prüfen
@@ -334,6 +292,11 @@ ollama list
 
 # Service neu starten
 # Windows: Ollama aus Taskleiste neu starten
+```
+
+**psycopg3 Installation schlägt fehl:**
+```bash
+pip install "psycopg[binary]>=3.1.0"
 ```
 
 ---

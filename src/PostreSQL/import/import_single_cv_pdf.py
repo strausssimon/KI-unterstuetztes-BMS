@@ -1,5 +1,7 @@
-r"""
-Interaktiver Import einer einzelnen PDF-Datei in die candidates-Tabelle (cv_pdf BYTEA Spalte).
+""" 
+====================================================
+Programmname : CV PDF Einzel-Import
+Beschreibung : Interaktiver Import einer einzelnen PDF-Datei in die candidates-Tabelle (cv_pdf BYTEA Spalte).
 
 Ablauf:
 - Nutzer gibt relativen oder absoluten Pfad zur PDF an, z.B. "data\db\CV\CV 1.pdf".
@@ -7,7 +9,10 @@ Ablauf:
 - Das Skript lädt Nachname, Vorname und ID aus der Datenbank,
   fasst alles zusammen und fragt zur Sicherheit noch einmal nach.
 - Bei Bestätigung wird das PDF in die Spalte cv_pdf des Kandidaten geschrieben.
+
+====================================================
 """
+
 
 import sys
 import os

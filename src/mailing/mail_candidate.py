@@ -1,14 +1,14 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-mail_candidate.py
+""" 
+====================================================
+Programmname : Mail-Generator für Kandidaten
+Beschreibung : Generiert personalisierte E-Mails aus echten Vorlagen mit Hilfe von Ollama
 
 Generiert personalisierte E-Mails für Kandidaten aus Matching-Ergebnissen
 unter Verwendung von Ollama LLM (llama3.2:3b, mistral:7b oder phi3:3.8b)
-
 Daten aus candidates und job-db 
 Voraussetzung: Filtermodul/Matching funktioniert
 Gehalt mit angeben
+====================================================
 """
 
 import sys

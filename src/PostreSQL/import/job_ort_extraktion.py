@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-job_ort_extraktion.py
+""" 
+====================================================
+Programmname : Ortsextraktion für Jobs
+Beschreibung : Extrahiert Ortsinformationen aus job_description und long_note
+und schreibt sie in stadt1, stadt2, ... und bundesland.
 
-Leitet den Ort aus den Spalten job_description und long_note in der jobs-Tabelle ab:
-- Städtenamen aus CSV → Stadt1, Stadt2, ...
-- Bundesländer aus CSV
+====================================================
 """
 
 import sys

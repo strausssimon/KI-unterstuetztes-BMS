@@ -1,15 +1,13 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-generate_personalized_mails.py
-
-Analysiert echte E-Mails aus data/db/mails, extrahiert daraus Templates/Muster
-und generiert personalisierte E-Mails basierend auf diesen Templates für neue Kandidaten.
-
+""" 
+====================================================
+Programmname : Mail-Vorlagen-Generator
+Beschreibung : Generiert personalisierte E-Mails aus echten Vorlagen mit Hilfe von Ollama
 Prozess:
 1. Lade echte E-Mails aus data/db/mails
 2. Analysiere mit Ollama → Extrahiere Templates mit Platzhaltern
 3. Nutze Templates um neue, personalisierte E-Mails zu generieren
+
+====================================================
 """
 
 import sys

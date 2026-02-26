@@ -1,3 +1,10 @@
+""" 
+====================================================
+Programmname : Ollama-Testskript
+Beschreibung : Prüft, ob Ollama läuft und testet mit einem Prompt
+
+====================================================
+"""
 import sys
 import os
 # Füge Projekt-Root zum Python-Pfad hinzu

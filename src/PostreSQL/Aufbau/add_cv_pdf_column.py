@@ -1,6 +1,11 @@
+""" 
+====================================================
+Programmname : CV PDF Spalte hinzufügen  
+Beschreibung :  Fügt die cv_pdf Spalte (BYTEA) zur candidates-Tabelle hinzu
+
+====================================================
 """
-Fügt die cv_pdf Spalte (BYTEA) zur candidates-Tabelle hinzu
-"""
+
 
 import sys
 import os

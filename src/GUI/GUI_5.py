@@ -1,3 +1,12 @@
+""" 
+====================================================
+Programmname : KI-unterstütztes BMS - GUI
+Beschreibung : GUI zur Verwaltung von Jobs und Kandidaten inkl. Matching,
+               intelligenter Suchabfrage, LLM-Datenimport und Mail-Generierung.
+
+====================================================
+"""
+
 import sys
 import os
 import tkinter as tk

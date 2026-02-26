@@ -1,14 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-mail_candidate.py
+""" 
+====================================================
+Programmname : KI-unterstütztes BMS – Mail Candidate Generator
+Beschreibung : Generiert personalisierte E-Mails für Kandidaten aus Matching-Ergebnissen
+               unter Verwendung von Ollama LLM (llama3.2:3b, mistral:7b oder phi3:3.8b)
 
-Generiert personalisierte E-Mails für Kandidaten aus Matching-Ergebnissen
-unter Verwendung von Ollama LLM (llama3.2:3b, mistral:7b oder phi3:3.8b)
-
-Daten aus candidates und job-db 
-Voraussetzung: Filtermodul/Matching funktioniert
-Gehalt mit angeben
+====================================================
 """
 
 import sys

@@ -1,3 +1,12 @@
+""" 
+====================================================
+Programmname : KI-unterstütztes BMS – Strukturierter Datenimport (LLM)
+Beschreibung : Extrahiert aus Freitext strukturierte Kandidaten-Informationen per Ollama-LLM
+               (JSON), validiert/normalisiert die Ausgabe und bereitet sie für DB-Import vor.
+
+====================================================
+"""
+
 import requests
 import json
 from typing import Optional

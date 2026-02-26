@@ -1,4 +1,11 @@
-"""Füge fehlende Spalten zur jobs-Tabelle hinzu"""
+""" 
+====================================================
+Programmname : Fehlende Spalten hinzufügen
+Beschreibung : Fügt fehlende Spalten zur jobs-Tabelle hinzu
+
+====================================================
+"""
+
 import psycopg
 from src.db_config import DB_CONFIG
 

@@ -1,3 +1,11 @@
+""" 
+====================================================
+Programmname : LeadDelta-Datensatzgenerator
+Beschreibung :  Generiert einen synthetischen Datensatz im LeadDelta-Format mit 500 Einträgen für Testzwecke.
+
+====================================================
+"""
+
 import csv
 import random
 import pandas as pd

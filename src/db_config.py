@@ -1,5 +1,7 @@
-"""
-Zentrale Datenbankverbindungskonfiguration für alle Python-Skripte.
+""" 
+====================================================
+Programmname : DB Konfiguration 
+Beschreibung : Zentrale Datenbankverbindungskonfiguration für alle Python-Skripte.
 
 Diese Datei enthält die DB_CONFIG für alle Verbindungen zur PostgreSQL-Datenbank.
 Änderungen hier wirken sich auf alle Skripte aus, die diese Datei importieren.
@@ -10,6 +12,8 @@ Verwendung:
     
     with psycopg.connect(**DB_CONFIG) as conn:
         ...
+
+====================================================
 """
 
 # Zentrale PostgreSQL-Verbindungskonfiguration

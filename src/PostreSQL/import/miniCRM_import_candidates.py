@@ -1,11 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-miniCRM_import.py
-
-Importiert Kandidaten aus miniCRM Excel-Datei in die PostgreSQL candidates-Tabelle.
+""" 
+====================================================
+Programmname : miniCRM → PostgreSQL Import
+Beschreibung : Importiert Kandidaten aus miniCRM Excel-Datei in die PostgreSQL candidates-Tabelle.
 Das Mapping zwischen miniCRM und PostgreSQL Spalten ist in mapping_minicrm_postresql.xlsx definiert.
+
+====================================================
 """
+
 
 import sys
 import os

@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-wunscharbeitsort.py
-
-Leitet den Wunscharbeitsort aus der available-Spalte ab:
+""" 
+====================================================
+Programmname : Wunscharbeitsort
+Beschreibung : Leitet den Wunscharbeitsort aus der available-Spalte ab:
 - "Deutschland" → "DE"
 - Städtenamen aus CSV → Stadt1, Stadt2, ...
+
+====================================================
 """
 
 import sys

@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-job_skills_extraktion.py
-
-Extrahiert Skills aus den Spalten job_description und long_note der
+""" 
+====================================================
+Programmname : Skillsextraktion für Jobs
+Beschreibung : Extrahiert Skills aus den Spalten job_description und long_note der
 jobs-Tabelle unter Verwendung der Skill-Liste in data/skills.csv und
 schreibt das Ergebnis in die Spalte sonstiges_anforderungen.
 
@@ -13,6 +11,8 @@ Ablauf:
 - Aus job_description und long_note werden Skills extrahiert.
 - Vorschau für die ersten Einträge anzeigen.
 - Nach Bestätigung wird sonstiges_anforderungen für diese Jobs aktualisiert.
+
+====================================================
 """
 
 import sys

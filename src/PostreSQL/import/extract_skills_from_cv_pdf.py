@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-extract_skills_from_cv_pdf.py
-
-Extrahiert Skills aus dem in der Spalte cv_pdf gespeicherten PDF eines
+""" 
+====================================================
+Programmname : Extrahiere Skills aus cv_pdf (PDF)
+Beschreibung : Extrahiert Skills aus dem in der Spalte cv_pdf gespeicherten PDF eines
 Kandidaten (BYTEA) und schreibt das Ergebnis in die Spalte skills der
 Tabelle candidates.
 
@@ -15,6 +13,8 @@ Ablauf:
   aus data/skills.csv extrahiert (mit exakter + unscharfer Suche).
 - Gefundene Skills werden angezeigt, zusammen mit Kandidatenname und ID.
 - Nach Bestätigung wird die Spalte skills für diesen Kandidaten aktualisiert.
+
+====================================================
 """
 
 import sys

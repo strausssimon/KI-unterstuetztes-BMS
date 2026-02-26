@@ -1,6 +1,10 @@
-"""
-Skript zum Füllen der Gehaltswunsch-Spalte in der candidates-Tabelle
+""" 
+====================================================
+Programmname : Fülle Gehaltswunsch-Spalte
+Beschreibung : Skript zum Füllen der Gehaltswunsch-Spalte in der candidates-Tabelle
 Berücksichtigt Position, Fachauswahl und Land als Einflussfaktoren
+
+====================================================
 """
 
 import sys

@@ -1,11 +1,16 @@
-"""
-Erstellt die Candidates-Tabelle basierend auf data/db/candidates_master.xlsx
+""" 
+====================================================
+Programmname : Neue Tabelle candidates
+Beschreibung : Erstellt die Candidates-Tabelle basierend auf data/db/candidates_master.xlsx
 Struktur:
 - Zeile 1: Spaltennamen
 - Zeile 2: Datentypen
 - Zeile 3: Beispieleintrag
 - Ab Zeile 4: Filterwerte/Vordefinierte Werte
+
+====================================================
 """
+
 
 import sys
 import os

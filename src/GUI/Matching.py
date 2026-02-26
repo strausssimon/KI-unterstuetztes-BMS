@@ -1,3 +1,12 @@
+""" 
+====================================================
+Programmname : KI-unterstütztes BMS – Matching
+Beschreibung : Matcht Kandidaten aus der Datenbank auf eine Stelle anhand von Karrierepfad,
+               Fachbereich sowie Scoring (Gehalt/Fahrtweg/Skills) und exportiert nach Excel.
+
+====================================================
+"""
+
 import sys
 import os
 # Füge Projekt-Root zum Python-Pfad hinzu

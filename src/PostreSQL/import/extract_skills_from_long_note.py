@@ -1,11 +1,8 @@
-832#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-extract_skills_from_long_note.py
-
-Extrahiert Skills aus der Spalte long_note eines einzelnen Kandidaten
-unter Verwendung der Skill-Liste in data/skills.csv und schreibt das
-Ergebnis in die Spalte skills der Tabelle candidates.
+""" 
+====================================================
+Programmname : Extrahiere Skills aus long_note
+Beschreibung : Extrahiert Skills aus der Spalte long_note eines Kandidaten
+und schreibt das Ergebnis in die Spalte skills der Tabelle candidates.
 
 Ablauf:
 - Nutzer gibt Kandidaten-ID an.
@@ -14,6 +11,8 @@ Ablauf:
   aus data/skills.csv extrahiert.
 - Gefundene Skills werden angezeigt, zusammen mit Kandidatenname und ID.
 - Nach Bestätigung wird die Spalte skills für diesen Kandidaten aktualisiert.
+
+====================================================
 """
 
 import sys

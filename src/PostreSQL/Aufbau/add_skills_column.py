@@ -1,7 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Fügt die Spalte 'skills' zur candidates-Tabelle hinzu
+""" 
+====================================================
+Programmname : Fehlende Skills Spalte hinzufügen
+Beschreibung : Fügt fehlende Spalte Skills zur candidates-Tabelle hinzu
+
+====================================================
 """
 
 import sys

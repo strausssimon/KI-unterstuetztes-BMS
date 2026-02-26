@@ -1,3 +1,10 @@
+""" 
+====================================================
+Programmname : Check Mapping
+Beschreibung : Prüft und korrigiert Constraints für die candidates-Tabelle
+
+====================================================
+"""
 import pandas as pd
 
 df = pd.read_excel('src/db communication/import/mapping_minicrm_postresql.xlsx')

@@ -1,11 +1,16 @@
-"""
-Erstellt die Jobs-Tabelle basierend auf data/db/jobs_master.xlsx
+""" 
+====================================================
+Programmname : Neue Tabelle jobs
+Beschreibung : Erstellt die jobs-Tabelle basierend auf data/db/jobs_master.xlsx
 Struktur:
 - Zeile 1: Spaltennamen
 - Zeile 2: Datentypen
 - Zeile 3: Beispieleintrag
 - Ab Zeile 4: Filterwerte/Vordefinierte Werte
+
+====================================================
 """
+
 
 import sys
 import os

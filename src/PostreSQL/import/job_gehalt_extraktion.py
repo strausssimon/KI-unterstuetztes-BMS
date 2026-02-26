@@ -1,11 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-job_gehalt_extraktion.py
-
-Extrahiert Gehaltsinformationen aus job_description und long_note
+""" 
+====================================================
+Programmname : Gehaltsextraktion für Jobs
+Beschreibung : Extrahiert Gehaltsinformationen aus job_description und long_note
 und schreibt sie in gehalt_von und gehalt_bis.
+
+====================================================
 """
+
 
 import sys
 import os

@@ -1,3 +1,11 @@
+""" 
+====================================================
+Programmname : KI-unterstütztes BMS – Intelligente Suchabfrage
+Beschreibung : Interpretiert Suchanfragen (via Ollama) und
+               matcht passende Kandidaten aus der Datenbank; inkl. Export.
+
+====================================================
+"""
 import sys
 import os
 # Füge Projekt-Root zum Python-Pfad hinzu

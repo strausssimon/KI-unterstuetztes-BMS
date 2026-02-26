@@ -1,6 +1,10 @@
-"""
-Backup-Skript für die jobs-Tabelle
+""" 
+====================================================
+Programmname : Backup Jobs-Tabelle als CSV
+Beschreibung : Backup-Skript für die jobs-Tabelle
 Exportiert die Tabelle als CSV mit Zeitstempel im Dateinamen
+
+====================================================
 """
 
 import sys

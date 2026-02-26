@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-miniCRM_import_jobs.py
-
-Importiert Jobs aus miniCRM Excel-Datei in die PostgreSQL jobs-Tabelle.
+""" 
+====================================================
+Programmname : miniCRM → PostgreSQL Jobs Import
+Beschreibung : Importiert Jobs aus miniCRM Excel-Datei in die PostgreSQL jobs-Tabelle.
 Das Mapping zwischen miniCRM und PostgreSQL Spalten ist in mapping_minicrm_postresql_jobs.xlsx definiert.
+
+====================================================
 """
 
 import sys

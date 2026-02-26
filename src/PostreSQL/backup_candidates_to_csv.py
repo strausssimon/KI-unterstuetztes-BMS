@@ -1,6 +1,10 @@
-"""
-Backup-Skript für die candidates-Tabelle
+""" 
+====================================================
+Programmname : Backup Kandidaten-Tabelle als CSV
+Beschreibung : Backup-Skript für die candidates-Tabelle
 Exportiert die Tabelle als CSV mit Zeitstempel im Dateinamen
+
+====================================================
 """
 
 import sys

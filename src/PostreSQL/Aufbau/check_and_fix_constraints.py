@@ -1,12 +1,13 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-check_and_fix_constraints.py
-
-Prüft und korrigiert Constraints für die candidates-Tabelle:
+""" 
+====================================================
+Programmname : Constraints prüfen und korrigieren
+Beschreibung : Prüft und korrigiert Constraints für die candidates-Tabelle
 - ID muss PRIMARY KEY sein
 - miniCRM-ID muss UNIQUE sein
+
+====================================================
 """
+
 
 import psycopg
 from psycopg import sql
